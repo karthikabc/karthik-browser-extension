@@ -1,0 +1,369 @@
+{
+  "rules": {
+    "sensitive-data-in-url": {
+      "enabled": true,
+      "severity": "high",
+      "name": "Sensitive Data in URL",
+      "description": "Detects sensitive information exposed in URL path or query parameters",
+      "patterns": {
+        "email": "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b",
+        "ssn": "\\b\\d{3}-\\d{2}-\\d{4}\\b",
+        "credit_card": "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b",
+        "api_key": "\\b[Aa][Pp][Ii][-_]?[Kk][Ee][Yy]\\s*[:=]\\s*['\"]?[a-zA-Z0-9]{20,}['\"]?",
+        "bearer_token": "\\b[Bb]earer\\s+[A-Za-z0-9\\-._~+/]+=*",
+        "jwt": "\\beyJ[A-Za-z0-9_-]*\\.[A-Za-z0-9_-]*\\.[A-Za-z0-9_-]*\\b",
+        "phone": "\\b\\d{3}[-.]?\\d{3}[-.]?\\d{4}\\b",
+        "ip_address": "\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b"
+      }
+    },
+    "sensitive-headers": {
+      "enabled": true,
+      "severity": "high",
+      "name": "Sensitive Data in Headers",
+      "description": "Detects sensitive information in custom headers (non-standard authentication)",
+      "headers": [
+        "x-email",
+        "x-user-email",
+        "user-email",
+        "x-password",
+        "x-ssn",
+        "x-credit-card",
+        "x-phone",
+        "x-dob",
+        "date-of-birth"
+      ]
+    },
+    "weak-authentication": {
+      "enabled": true,
+      "severity": "critical",
+      "name": "Weak Authentication",
+      "description": "Detects weak or insecure authentication mechanisms",
+      "checks": [
+        {
+          "type": "basic_auth",
+          "pattern": "^Basic\\s+",
+          "message": "Basic authentication is not secure without HTTPS"
+        },
+        {
+          "type": "api_key_in_query",
+          "params": ["api_key", "apikey", "key"],
+          "message": "API keys should be in headers, not query parameters"
+        },
+        {
+          "type": "credentials_in_body",
+          "fields": ["password", "pwd", "passwd"],
+          "message": "Credentials in request body without proper encryption"
+        }
+      ]
+    },
+    "insecure-http": {
+      "enabled": true,
+      "severity": "critical",
+      "name": "Insecure HTTP Protocol",
+      "description": "Detects API calls using HTTP instead of HTTPS",
+      "message": "API calls should use HTTPS to encrypt data in transit"
+    },
+    "missing-response-security-headers": {
+      "enabled": true,
+      "severity": "medium",
+      "name": "Missing Response Security Headers",
+      "description": "Checks for missing recommended security headers on responses",
+      "headers": [
+        "strict-transport-security",
+        "x-content-type-options",
+        "x-frame-options",
+        "content-security-policy",
+        "referrer-policy",
+        "permissions-policy"
+      ]
+    },
+    "cors-misconfiguration": {
+      "enabled": true,
+      "severity": "high",
+      "name": "CORS Misconfiguration Risk",
+      "description": "Detects permissive CORS policies in responses",
+      "message": "CORS policy may be overly permissive"
+    },
+    "pii-in-request-body": {
+      "enabled": false,
+      "severity": "info",
+      "name": "PII in Request Body",
+      "description": "Detects Personally Identifiable Information in request payloads (disabled - expected in legitimate forms)",
+      "fields": [
+        "ssn",
+        "social_security_number",
+        "credit_card",
+        "creditCard",
+        "card_number",
+        "cvv",
+        "passport",
+        "drivers_license",
+        "bank_account",
+        "routing_number"
+      ]
+    },
+    "excessive-data-exposure": {
+      "enabled": false,
+      "severity": "low",
+      "name": "Excessive Data Exposure",
+      "description": "Detects endpoints that may return too much data (disabled - too noisy)",
+      "checks": [
+        {
+          "type": "no_pagination",
+          "message": "GET requests without pagination parameters may expose excessive data"
+        }
+      ]
+    },
+    "sql-injection-risk": {
+      "enabled": true,
+      "severity": "critical",
+      "name": "SQL Injection Risk",
+      "description": "Detects potential SQL injection vulnerabilities in parameters",
+      "patterns": [
+        "\\bSELECT\\b.*\\bFROM\\b",
+        "\\bINSERT\\b.*\\bINTO\\b",
+        "\\bUPDATE\\b.*\\bSET\\b",
+        "\\bDELETE\\b.*\\bFROM\\b",
+        "\\bDROP\\b.*\\bTABLE\\b",
+        "\\bUNION\\b.*\\bSELECT\\b",
+        "\\bOR\\b.*\\b1\\s*=\\s*1\\b",
+        "'\\s*OR\\s*'1'\\s*=\\s*'1"
+      ]
+    },
+    "xss-risk": {
+      "enabled": true,
+      "severity": "high",
+      "name": "XSS Risk",
+      "description": "Detects potential Cross-Site Scripting vulnerabilities",
+      "patterns": [
+        "<script[^>]*>",
+        "javascript:",
+        "onerror\\s*=",
+        "onload\\s*=",
+        "onclick\\s*=",
+        "<iframe[^>]*>",
+        "eval\\s*\\(",
+        "document\\.cookie"
+      ]
+    },
+    "path-traversal-risk": {
+      "enabled": true,
+      "severity": "high",
+      "name": "Path Traversal Risk",
+      "description": "Detects potential path traversal attacks",
+      "patterns": [
+        "\\.\\./",
+        "\\.\\.\\\\",
+        "%2e%2e/",
+        "%2e%2e\\\\",
+        "..%2f",
+        "..%5c"
+      ]
+    },
+    "insufficient-rate-limiting": {
+      "enabled": false,
+      "severity": "low",
+      "name": "Insufficient Rate Limiting",
+      "description": "Detects endpoints that may lack rate limiting (disabled - normal app behavior)",
+      "threshold": 10,
+      "timeWindow": 1000,
+      "message": "Endpoint called multiple times rapidly without rate limit headers"
+    },
+    "weak-password-policy": {
+      "enabled": true,
+      "severity": "medium",
+      "name": "Weak Password Policy",
+      "description": "Detects weak password requirements in registration/change endpoints",
+      "checks": [
+        {
+          "field": "password",
+          "min_length": 8,
+          "message": "Password should be at least 8 characters"
+        }
+      ]
+    },
+    "verbose-error-messages": {
+      "enabled": true,
+      "severity": "medium",
+      "name": "Error Information Leakage",
+      "description": "Detects stack traces or framework-specific error details in responses",
+      "status_codes": [400, 401, 403, 404, 500, 502, 503],
+      "patterns": [
+        "Exception in thread",
+        "Stack trace:",
+        "Traceback (most recent call last):",
+        "org\\.springframework\\.",
+        "java\\.lang\\.",
+        "System\\.NullReferenceException",
+        "ReferenceError:",
+        "TypeError:",
+        "SQLSTATE",
+        "SequelizeDatabaseError",
+        "at [^\n]+\\(.*:\\d+:\\d+\\)",
+        "warning:.*deprecated"
+      ],
+      "message": "Response appears to expose internal error details"
+    },
+    "predictable-resource-ids": {
+      "enabled": false,
+      "severity": "low",
+      "name": "Predictable Resource IDs",
+      "description": "Detects sequential numeric IDs that could be enumerated (disabled - requires proper authz regardless)",
+      "pattern": "\\b\\d{1,8}\\b",
+      "message": "Sequential numeric IDs can be enumerated; consider using UUIDs"
+    },
+    "missing-authentication": {
+      "enabled": true,
+      "severity": "critical",
+      "name": "Missing Authentication",
+      "description": "Detects API calls without authentication headers",
+      "excludePaths": ["/login", "/register", "/health", "/status", "/public"],
+      "message": "API endpoint accessed without authentication headers"
+    },
+    "outdated-tls": {
+      "enabled": false,
+      "severity": "high",
+      "name": "Outdated TLS Version",
+      "description": "Detects usage of outdated TLS versions (Note: Limited detection in browser)",
+      "message": "Ensure API uses TLS 1.2 or higher"
+    },
+    "mass-assignment": {
+      "enabled": true,
+      "severity": "high",
+      "name": "Mass Assignment Risk",
+      "description": "Detects potential mass assignment vulnerabilities",
+      "sensitiveFields": [
+        "isAdmin",
+        "is_admin",
+        "role",
+        "roles",
+        "permissions",
+        "verified",
+        "is_verified",
+        "approved",
+        "is_approved",
+        "balance",
+        "credits"
+      ],
+      "message": "Sensitive fields in request may allow privilege escalation"
+    },
+    "unencrypted-sensitive-data": {
+      "enabled": true,
+      "severity": "critical",
+      "name": "Unencrypted Sensitive Data",
+      "description": "Detects unencrypted transmission of sensitive data",
+      "fields": [
+        "password",
+        "secret",
+        "private_key",
+        "privateKey",
+        "pin",
+        "cvv",
+        "security_code"
+      ],
+      "message": "Sensitive data transmitted without encryption"
+    },
+    "insecure-cookies": {
+      "enabled": true,
+      "severity": "high",
+      "name": "Insecure Cookies",
+      "description": "Detects Set-Cookie attributes missing security flags",
+      "message": "Cookies should set Secure, HttpOnly and SameSite attributes"
+    },
+    "pii-in-response-body": {
+      "enabled": true,
+      "severity": "critical",
+      "name": "Sensitive Data in Response Body",
+      "description": "Detects unmasked sensitive data patterns in response payloads",
+      "patterns": {
+        "ssn": "\\b\\d{3}-\\d{2}-\\d{4}\\b",
+        "full_credit_card": "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b",
+        "private_key": "-----BEGIN (RSA |EC )?PRIVATE KEY-----"
+      }
+    },
+    "missing-input-validation": {
+      "enabled": false,
+      "severity": "high",
+      "name": "Missing Input Validation",
+      "description": "Detects potentially dangerous user input without validation indicators",
+      "message": "User input may lack server-side validation"
+    },
+    "hardcoded-secrets": {
+      "enabled": true,
+      "severity": "critical",
+      "name": "Hardcoded Secrets in Request",
+      "description": "Detects hardcoded secrets, API keys, or tokens",
+      "patterns": {
+        "aws_key": "(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}",
+        "github_token": "ghp_[A-Za-z0-9]{36}",
+        "slack_token": "xox[baprs]-[0-9]{10,12}-[0-9]{10,12}-[A-Za-z0-9]{24,32}",
+        "generic_api_key": "['\"][a-zA-Z0-9]{32,}['\"]"
+      }
+    },
+    "open-redirect": {
+      "enabled": true,
+      "severity": "high",
+      "name": "Open Redirect Risk",
+      "description": "Detects URL parameters that could enable open redirects",
+      "params": ["redirect", "url", "next", "return", "returnUrl", "goto", "continue"]
+    },
+    "ssrf-risk": {
+      "enabled": true,
+      "severity": "high",
+      "name": "SSRF Risk",
+      "description": "Detects parameters that could enable Server-Side Request Forgery",
+      "params": ["url", "uri", "endpoint", "callback", "webhook", "fetch", "proxy"]
+    },
+    "debug-endpoints": {
+      "enabled": true,
+      "severity": "medium",
+      "name": "Debug/Admin Endpoints Exposed",
+      "description": "Detects potentially sensitive debug or admin endpoints",
+      "patterns": [
+        "/debug",
+        "/admin",
+        "/console",
+        "/actuator",
+        "/swagger",
+        "/api-docs",
+        "/_debug",
+        "/graphql",
+        "/phpinfo",
+        "/.env",
+        "/config"
+      ]
+    },
+    "untrusted-client-identity": {
+      "enabled": false,
+      "severity": "critical",
+      "name": "Untrusted Client-Supplied Identity",
+      "description": "Detects identity fields (email, userId, username) in request body when JWT is present - identity should be extracted from token",
+      "identityFields": [
+        "email",
+        "userId",
+        "user_id",
+        "username",
+        "userName",
+        "sub",
+        "subject",
+        "accountId",
+        "account_id"
+      ],
+      "excludeEndpoints": [
+        "/login",
+        "/register",
+        "/signup",
+        "/auth",
+        "/forgot-password",
+        "/reset-password",
+        "/verify-email"
+      ],
+      "message": "Identity field in request body when JWT present - extract from token instead"
+    }
+  },
+  "metadata": {
+    "version": "1.0.0",
+    "lastUpdated": "2025-10-18",
+    "description": "Customizable security vulnerability detection rules for GAMX Chrome & Edge Extension"
+  }
+}

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>GAMX Firefox Extension</title>
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>GAMX Security Monitor</h1>
+      <div class="security-summary" id="security-summary">
+        <span class="severity-badge critical" title="Critical severity issues">0</span>
+        <span class="severity-badge high" title="High severity issues">0</span>
+        <span class="severity-badge medium" title="Medium severity issues">0</span>
+        <span class="severity-badge low" title="Low severity issues">0</span>
+        <button id="clear-severity-filter-btn" class="clear-filter-btn" style="display: none;">Clear Filter</button>
+      </div>
+      <div class="controls">
+        <button id="security-settings-btn" title="Configure Security Rules">Rules</button>
+        <button id="clear-btn">Clear</button>
+        <button id="export-btn">Autogenerate API Documentation</button>
+        <div class="filter-group">
+          <span class="filter-group-label">Filter only:</span>
+          <label title="Filter for DC partner endpoints">
+            <input type="checkbox" id="dc-filter-checkbox">
+            DC APIs
+          </label>
+          <label title="Filter for GAMX partner endpoints">
+            <input type="checkbox" id="gamx-filter-checkbox">
+            GAMX APIs
+          </label>
+        </div>
+        <label title="Capture response bodies (requires debugger permission)">
+          <input type="checkbox" id="response-bodies-checkbox">
+          Response Bodies
+        </label>
+        <label>
+          <input type="checkbox" id="record-checkbox" checked>
+          Recording
+        </label>
+        <button id="reload-extension-btn" class="small-btn" title="Reload the extension">↻</button>
+      </div>
+    </div>
+    
+    <div class="main-content">
+      <div class="sidebar">
+        <div class="sidebar-header">
+          <h2>Endpoints</h2>
+          <div class="selection-controls">
+            <button id="select-all-btn" class="small-btn">Select All</button>
+            <button id="select-none-btn" class="small-btn">Select None</button>
+            <span id="selection-info" class="selection-info">0 selected</span>
+          </div>
+        </div>
+        <div id="endpoints-list"></div>
+      </div>
+      
+      <div class="details">
+        <div id="request-details">
+          <h2>Select an endpoint to view details</h2>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Security Rules Modal -->
+  <div id="security-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Security Rules Configuration</h2>
+        <button class="modal-close" id="modal-close-btn">×</button>
+      </div>
+      <div class="modal-body" id="security-rules-container">
+        <!-- Rules will be dynamically loaded here -->
+      </div>
+      <div class="modal-footer">
+        <button id="save-rules-btn" class="primary-btn">Save Rules</button>
+        <button id="reset-rules-btn" class="secondary-btn">Reset to Defaults</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="security-analyzer.js"></script>
+  <script src="panel.js"></script>
+</body>
+</html>

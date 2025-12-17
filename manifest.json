@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "GAMX Chrome & Edge Extension",
+  "version": "2.0.2",
+  "description": "Comprehensive API monitoring, documentation, and security analysis tool",
+  "permissions": [
+    "webRequest",
+    "storage",
+    "tabs",
+    "debugger"
+  ],
+  "devtools_page": "devtools.html",
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["security-rules.json"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

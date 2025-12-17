@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Test - Untrusted Client Identity</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .test-case {
+            background: #f5f5f5;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+            border-left: 4px solid #2196F3;
+        }
+        .critical {
+            border-left-color: #f44336;
+        }
+        button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0b7dda;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+        }
+        pre {
+            background: #263238;
+            color: #aed581;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        h1 { color: #333; }
+        h3 { color: #666; margin-top: 0; }
+    </style>
+</head>
+<body>
+    <h1>🛡️ Security Warning Test Page</h1>
+    <p>This page tests the <strong>Untrusted Client-Supplied Identity</strong> security check.</p>
+    <p>Open DevTools → API Mapper panel to see security warnings.</p>
+
+    <div class="test-case critical">
+        <h3>⚠️ Test Case 1: CRITICAL - Email in Request Body with JWT</h3>
+        <p>This should trigger a CRITICAL security warning!</p>
+        <pre>POST /api/user/update
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6InVzZXJAZXhhbXBsZS5jb20ifQ.test
+Body: {"email":"gamtest.23@mockinbox.com","pwd":"encrypted","requestType":"registration"}</pre>
+        <button onclick="testCase1()">Run Test 1</button>
+        <div id="result1" class="result"></div>
+    </div>
+
+    <div class="test-case critical">
+        <h3>⚠️ Test Case 2: CRITICAL - userId in Request Body with JWT</h3>
+        <p>This should also trigger a CRITICAL security warning!</p>
+        <pre>POST /api/profile/update
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEyM30.test
+Body: {"userId":"456","name":"Attacker","role":"admin"}</pre>
+        <button onclick="testCase2()">Run Test 2</button>
+        <div id="result2" class="result"></div>
+    </div>
+
+    <div class="test-case">
+        <h3>✅ Test Case 3: OK - Login Endpoint (Excluded)</h3>
+        <p>This should NOT trigger a warning (login is excluded)</p>
+        <pre>POST /api/login
+Body: {"email":"user@example.com","password":"test123"}</pre>
+        <button onclick="testCase3()">Run Test 3</button>
+        <div id="result3" class="result"></div>
+    </div>
+
+    <div class="test-case">
+        <h3>✅ Test Case 4: OK - No JWT Token</h3>
+        <p>This should NOT trigger a warning (no JWT present)</p>
+        <pre>POST /api/user/update
+Body: {"email":"user@example.com","name":"Test User"}</pre>
+        <button onclick="testCase4()">Run Test 4</button>
+        <div id="result4" class="result"></div>
+    </div>
+
+    <div class="test-case critical">
+        <h3>⚠️ Test Case 5: CRITICAL - Your Exact Payload</h3>
+        <p>Your reported payload with JWT</p>
+        <pre>POST /api/endpoint
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.test
+Body: {"email":"gamtest.23@mockinbox.com","pwd":"g2pBDB5nhPOJ|482eLUNRUGiPBLGncD0L2w==","requestType":"registration"}</pre>
+        <button onclick="testCase5()">Run Test 5</button>
+        <div id="result5" class="result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://jsonplaceholder.typicode.com'; // Dummy API for testing
+
+        async function testCase1() {
+            const result = document.getElementById('result1');
+            result.innerHTML = '⏳ Sending request...';
+            
+            try {
+                const response = await fetch(`${API_BASE}/posts/1`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6InVzZXJAZXhhbXBsZS5jb20ifQ.test'
+                    },
+                    body: JSON.stringify({
+                        email: 'gamtest.23@mockinbox.com',
+                        pwd: 'encrypted',
+                        requestType: 'registration'
+                    })
+                });
+                
+                result.innerHTML = `✅ Request sent! Check API Mapper panel for security warning.<br>Status: ${response.status}`;
+            } catch (error) {
+                result.innerHTML = `✅ Request sent (CORS error is OK). Check API Mapper panel for security warning.`;
+            }
+        }
+
+        async function testCase2() {
+            const result = document.getElementById('result2');
+            result.innerHTML = '⏳ Sending request...';
+            
+            try {
+                const response = await fetch(`${API_BASE}/posts/2`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEyM30.test'
+                    },
+                    body: JSON.stringify({
+                        userId: '456',
+                        name: 'Attacker',
+                        role: 'admin'
+                    })
+                });
+                
+                result.innerHTML = `✅ Request sent! Check API Mapper panel for security warning.<br>Status: ${response.status}`;
+            } catch (error) {
+                result.innerHTML = `✅ Request sent (CORS error is OK). Check API Mapper panel for security warning.`;
+            }
+        }
+
+        async function testCase3() {
+            const result = document.getElementById('result3');
+            result.innerHTML = '⏳ Sending request...';
+            
+            try {
+                const response = await fetch(`${API_BASE}/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: 'user@example.com',
+                        password: 'test123'
+                    })
+                });
+                
+                result.innerHTML = `✅ Request sent! Should NOT trigger warning (excluded endpoint).<br>Status: ${response.status}`;
+            } catch (error) {
+                result.innerHTML = `✅ Request sent (CORS error is OK). Should NOT trigger warning.`;
+            }
+        }
+
+        async function testCase4() {
+            const result = document.getElementById('result4');
+            result.innerHTML = '⏳ Sending request...';
+            
+            try {
+                const response = await fetch(`${API_BASE}/posts/4`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: 'user@example.com',
+                        name: 'Test User'
+                    })
+                });
+                
+                result.innerHTML = `✅ Request sent! Should NOT trigger warning (no JWT).<br>Status: ${response.status}`;
+            } catch (error) {
+                result.innerHTML = `✅ Request sent (CORS error is OK). Should NOT trigger warning.`;
+            }
+        }
+
+        async function testCase5() {
+            const result = document.getElementById('result5');
+            result.innerHTML = '⏳ Sending request...';
+            
+            try {
+                const response = await fetch(`${API_BASE}/posts/5`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.test'
+                    },
+                    body: JSON.stringify({
+                        email: 'gamtest.23@mockinbox.com',
+                        pwd: 'g2pBDB5nhPOJ|482eLUNRUGiPBLGncD0L2w==',
+                        requestType: 'registration'
+                    })
+                });
+                
+                result.innerHTML = `✅ Request sent! Check API Mapper panel for security warning.<br>Status: ${response.status}`;
+            } catch (error) {
+                result.innerHTML = `✅ Request sent (CORS error is OK). Check API Mapper panel for security warning.`;
+            }
+        }
+    </script>
+</body>
+</html>
