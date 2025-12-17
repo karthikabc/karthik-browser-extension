@@ -2239,6 +2239,52 @@ function updateSecuritySummary() {
 }
 
 /**
+ * Generate AI prompt for security issue
+ */
+function generateAiPrompt(issue, endpointData) {
+  let prompt = `I found a security vulnerability in my application. Here are the details:\n\n`;
+  prompt += `Name: ${issue.name}\n`;
+  prompt += `Severity: ${issue.severity}\n`;
+  prompt += `Message: ${issue.message}\n`;
+  
+  if (issue.location) {
+    prompt += `Location: ${issue.location}\n`;
+  }
+  
+  if (issue.details) {
+    prompt += `\nTechnical Details:\n`;
+    for (const [key, value] of Object.entries(issue.details)) {
+      let displayValue = value;
+      if (typeof value === 'object') {
+        displayValue = JSON.stringify(value, null, 2);
+      }
+      prompt += `${key}: ${displayValue}\n`;
+    }
+  }
+
+  if (endpointData) {
+    prompt += `\nAPI Request Details:\n`;
+    prompt += `URL: ${endpointData.url || 'N/A'}\n`;
+    prompt += `Method: ${endpointData.method || 'N/A'}\n`;
+    
+    if (endpointData.requestHeaders) {
+      prompt += `Request Headers: ${JSON.stringify(endpointData.requestHeaders, null, 2)}\n`;
+    }
+    
+    if (endpointData.requestBodies && endpointData.requestBodies.length > 0) {
+      prompt += `Request Body: ${JSON.stringify(endpointData.requestBodies[0], null, 2)}\n`;
+    }
+
+    if (endpointData.responseHeaders) {
+      prompt += `Response Headers: ${JSON.stringify(endpointData.responseHeaders, null, 2)}\n`;
+    }
+  }
+  
+  prompt += `\nPlease explain this vulnerability in detail, why it is a risk, and how to fix it. Provide code examples if possible.`;
+  return prompt;
+}
+
+/**
  * Create security issues display section
  */
 function createSecurityIssuesSection(data) {
@@ -2309,6 +2355,36 @@ function createSecurityIssuesSection(data) {
         
         const issueMessage = createElement('div', 'security-issue-message', issue.message);
         issueItem.appendChild(issueMessage);
+
+        // Add ASK AI button
+        const askAiBtn = createElement('button', 'security-ask-ai-btn', 'ASK AI');
+        askAiBtn.style.marginTop = '8px';
+        askAiBtn.style.marginBottom = '8px';
+        askAiBtn.style.marginRight = '10px'; // Add margin between buttons
+        askAiBtn.style.backgroundColor = '#0078d4';
+        askAiBtn.style.color = 'white';
+        askAiBtn.style.border = 'none';
+        askAiBtn.style.borderRadius = '4px';
+        askAiBtn.style.padding = '6px 12px';
+        askAiBtn.style.cursor = 'pointer';
+        askAiBtn.style.fontSize = '12px';
+        askAiBtn.style.fontWeight = 'bold';
+        
+        askAiBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          
+          const prompt = generateAiPrompt(issue, data);
+          navigator.clipboard.writeText(prompt).then(() => {
+            askAiBtn.textContent = 'Prompt Copied.';
+            askAiBtn.style.backgroundColor = '#107c10'; // Green
+          }).catch(err => {
+            console.error('Failed to copy text: ', err);
+            alert('Failed to copy prompt to clipboard');
+          });
+        });
+        
+        issueItem.appendChild(askAiBtn);
         
         if (issue.details && Object.keys(issue.details).length > 0) {
           const detailsBtn = createElement('button', 'security-details-btn', 'Details ▲');
