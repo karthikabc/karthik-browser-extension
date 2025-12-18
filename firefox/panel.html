@@ -8,18 +8,24 @@
 <body>
   <div class="container">
     <div class="header">
-      <h1>GAMX Security Monitor</h1>
-      <div class="security-summary" id="security-summary">
-        <span class="severity-badge critical" title="Critical severity issues">0</span>
-        <span class="severity-badge high" title="High severity issues">0</span>
-        <span class="severity-badge medium" title="Medium severity issues">0</span>
-        <span class="severity-badge low" title="Low severity issues">0</span>
-        <button id="clear-severity-filter-btn" class="clear-filter-btn" style="display: none;">Clear Filter</button>
+      <div class="header-title-group">
+        <h1>GAMX Security Monitor</h1>
+        <div class="security-summary" id="security-summary">
+          <span class="severity-badge critical" title="Critical severity issues">0</span>
+          <span class="severity-badge high" title="High severity issues">0</span>
+          <span class="severity-badge medium" title="Medium severity issues">0</span>
+          <span class="severity-badge low" title="Low severity issues">0</span>
+          <button id="clear-severity-filter-btn" class="clear-filter-btn" style="display: none;">Clear Filter</button>
+        </div>
       </div>
       <div class="controls">
         <button id="security-settings-btn" title="Configure Security Rules">Rules</button>
-        <button id="clear-btn">Clear</button>
-        <button id="export-btn">Autogenerate API Documentation</button>
+        <button id="clear-btn" title="Clear all">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash" viewBox="0 0 16 16">
+            <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z"/>
+            <path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3h11V2h-11z"/>
+          </svg>
+        </button>
         <div class="filter-group">
           <span class="filter-group-label">Filter only:</span>
           <label title="Filter for DC partner endpoints">
@@ -40,6 +46,13 @@
           Recording
         </label>
         <button id="reload-extension-btn" class="small-btn" title="Reload the extension">↻</button>
+        <div class="export-group">
+          <button id="export-btn">Generate API Documentation</button>
+          <button id="excel-report-btn" title="Download Excel Report of Vulnerabilities" style="font-weight: normal;">Excel Report</button>
+        </div>
+        <button id="ask-ai-all-btn" class="ai-button" title="Analyze selected endpoints with AI">
+          <span class="ai-icon">✨</span> ASK AI
+        </button>
       </div>
     </div>
     

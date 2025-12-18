@@ -117,6 +117,8 @@ const exportBtn = document.getElementById('export-btn');
 const recordCheckbox = document.getElementById('record-checkbox');
 const selectAllBtn = document.getElementById('select-all-btn');
 const selectNoneBtn = document.getElementById('select-none-btn');
+const askAiAllBtn = document.getElementById('ask-ai-all-btn');
+const excelReportBtn = document.getElementById('excel-report-btn');
 const selectionInfo = document.getElementById('selection-info');
 const securitySummary = document.getElementById('security-summary');
 const securitySettingsBtn = document.getElementById('security-settings-btn');
@@ -1212,6 +1214,115 @@ selectNoneBtn.addEventListener('click', () => {
   showStatus('Selection cleared', 'info');
 });
 
+askAiAllBtn.addEventListener('click', () => {
+  if (selectedEndpoints.size === 0) {
+    showStatus('Please select at least one endpoint to analyze', 'error');
+    return;
+  }
+
+  const prompt = generateCombinedAiPrompt();
+  navigator.clipboard.writeText(prompt).then(() => {
+    // Save original state
+    const originalHTML = '<span class="ai-icon">✨</span> ASK AI';
+    
+    // Change to success state
+    askAiAllBtn.textContent = 'Prompt Copied!';
+    askAiAllBtn.style.background = '#10b981'; // Success green
+    askAiAllBtn.style.animation = 'none'; // Stop animation temporarily
+    
+    // Revert after 2 seconds
+    setTimeout(() => {
+      askAiAllBtn.innerHTML = originalHTML;
+      askAiAllBtn.style.background = ''; // Revert to CSS gradient
+      askAiAllBtn.style.animation = ''; // Restore animation
+    }, 2000);
+  }).catch(err => {
+    console.error('Failed to copy text: ', err);
+    showStatus('Failed to copy prompt to clipboard', 'error');
+  });
+});
+
+excelReportBtn.addEventListener('click', () => {
+  if (selectedEndpoints.size === 0) {
+    showStatus('Please select at least one endpoint to export', 'error');
+    return;
+  }
+  
+  generateExcelReport();
+});
+
+/**
+ * Generate and download Excel (CSV) report
+ */
+function generateExcelReport() {
+  try {
+    // Prepare CSV content
+    const headers = [
+      'Endpoint URL',
+      'Method',
+      'Host',
+      'Severity',
+      'Vulnerability Name',
+      'Description',
+      'Location',
+      'Technical Details'
+    ];
+    
+    let csvContent = headers.join(',') + '\n';
+    let issueCount = 0;
+    
+    selectedEndpoints.forEach(endpoint => {
+      const data = apiData.get(endpoint);
+      if (data && data.securityIssues && data.securityIssues.length > 0) {
+        data.securityIssues.forEach(issue => {
+          issueCount++;
+          
+          // Format details as a single string
+          let detailsStr = '';
+          if (issue.details) {
+            detailsStr = JSON.stringify(issue.details).replace(/"/g, '""'); // Escape quotes
+          }
+          
+          const row = [
+            `"${(data.url || endpoint).replace(/"/g, '""')}"`,
+            `"${(data.method || '').replace(/"/g, '""')}"`,
+            `"${(data.host || '').replace(/"/g, '""')}"`,
+            `"${(issue.severity || '').toUpperCase()}"`,
+            `"${(issue.name || '').replace(/"/g, '""')}"`,
+            `"${(issue.message || '').replace(/"/g, '""')}"`,
+            `"${(issue.location || '').replace(/"/g, '""')}"`,
+            `"${detailsStr}"`
+          ];
+          
+          csvContent += row.join(',') + '\n';
+        });
+      }
+    });
+    
+    if (issueCount === 0) {
+      showStatus('No security issues found in selected endpoints', 'warning');
+      return;
+    }
+    
+    // Create download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `security_report_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    showStatus(`Exported ${issueCount} vulnerabilities to Excel/CSV`, 'success');
+    
+  } catch (error) {
+    console.error('Export error:', error);
+    showStatus('Failed to generate Excel report', 'error');
+  }
+}
+
 // Add filter controls to header
 function addFilterControls() {
   const controls = document.querySelector('.controls');
@@ -1555,6 +1666,7 @@ function addFilterControls() {
   
   // Insert before existing controls
   controls.insertBefore(searchInput, controls.firstChild);
+  searchInput.style.marginLeft = '15px'; // Add margin to separate from security summary
   controls.insertBefore(hostDropdown, searchInput.nextSibling);
   controls.insertBefore(methodDropdown, hostDropdown.nextSibling);
   controls.insertBefore(tagDropdown, methodDropdown.nextSibling);
@@ -2239,6 +2351,42 @@ function updateSecuritySummary() {
 }
 
 /**
+ * Generate combined AI prompt for all selected endpoints
+ */
+function generateCombinedAiPrompt() {
+  let prompt = `I have analyzed the following API endpoints and found security vulnerabilities. Please summarize these issues, explain the risks, and suggest fixes.\n\n`;
+  
+  prompt += `| Endpoint | Method | Severity | Vulnerability | Description |\n`;
+  prompt += `|---|---|---|---|---|\n`;
+  
+  let hasIssues = false;
+  
+  selectedEndpoints.forEach(endpoint => {
+    const data = apiData.get(endpoint);
+    if (data && data.securityIssues && data.securityIssues.length > 0) {
+      hasIssues = true;
+      data.securityIssues.forEach(issue => {
+        const url = data.url || endpoint;
+        const method = data.method || 'N/A';
+        const severity = issue.severity || 'Unknown';
+        const name = issue.name || 'Unknown Issue';
+        const message = (issue.message || '').replace(/\n/g, ' '); // Remove newlines for table
+        
+        prompt += `| ${url} | ${method} | ${severity} | ${name} | ${message} |\n`;
+      });
+    }
+  });
+  
+  if (!hasIssues) {
+    return "No security issues found in the selected endpoints.";
+  }
+  
+  prompt += `\n\nPlease provide a detailed summary of these vulnerabilities, grouped by type and severity. Also provide remediation steps for each type of vulnerability found.`;
+  
+  return prompt;
+}
+
+/**
  * Generate AI prompt for security issue
  */
 function generateAiPrompt(issue, endpointData) {
@@ -2357,18 +2505,13 @@ function createSecurityIssuesSection(data) {
         issueItem.appendChild(issueMessage);
 
         // Add ASK AI button
-        const askAiBtn = createElement('button', 'security-ask-ai-btn', 'ASK AI');
+        const askAiBtn = createElement('button', 'ai-button', '');
+        askAiBtn.innerHTML = '<span class="ai-icon">✨</span> ASK AI';
         askAiBtn.style.marginTop = '8px';
         askAiBtn.style.marginBottom = '8px';
         askAiBtn.style.marginRight = '10px'; // Add margin between buttons
-        askAiBtn.style.backgroundColor = '#0078d4';
-        askAiBtn.style.color = 'white';
-        askAiBtn.style.border = 'none';
-        askAiBtn.style.borderRadius = '4px';
-        askAiBtn.style.padding = '6px 12px';
-        askAiBtn.style.cursor = 'pointer';
-        askAiBtn.style.fontSize = '12px';
-        askAiBtn.style.fontWeight = 'bold';
+        askAiBtn.style.fontSize = '12px'; // Slightly smaller for list items
+        askAiBtn.style.padding = '4px 10px'; // Slightly smaller padding
         
         askAiBtn.addEventListener('click', (e) => {
           e.preventDefault();
@@ -2376,8 +2519,20 @@ function createSecurityIssuesSection(data) {
           
           const prompt = generateAiPrompt(issue, data);
           navigator.clipboard.writeText(prompt).then(() => {
-            askAiBtn.textContent = 'Prompt Copied.';
-            askAiBtn.style.backgroundColor = '#107c10'; // Green
+            // Save original state
+            const originalHTML = '<span class="ai-icon">✨</span> ASK AI';
+            
+            // Change to success state
+            askAiBtn.textContent = 'Prompt Copied!';
+            askAiBtn.style.background = '#10b981'; // Success green
+            askAiBtn.style.animation = 'none'; // Stop animation temporarily
+            
+            // Revert after 2 seconds
+            setTimeout(() => {
+              askAiBtn.innerHTML = originalHTML;
+              askAiBtn.style.background = ''; // Revert to CSS gradient
+              askAiBtn.style.animation = ''; // Restore animation
+            }, 2000);
           }).catch(err => {
             console.error('Failed to copy text: ', err);
             alert('Failed to copy prompt to clipboard');
