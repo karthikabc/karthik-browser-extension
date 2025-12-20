@@ -1,5 +1,5 @@
 /**
- * Security Analyzer Module for Firefox
+ * Security Analyzer Module
  * Analyzes API calls for security vulnerabilities based on customizable rules
  */
 
@@ -15,7 +15,7 @@ class SecurityAnalyzer {
    */
   async init() {
     try {
-      const response = await fetch(browser.runtime.getURL('security-rules.json'));
+      const response = await fetch(chrome.runtime.getURL('security-rules.json'));
       const config = await response.json();
       this.rules = config.rules;
       this.initialized = true;
@@ -69,6 +69,8 @@ class SecurityAnalyzer {
                 message: issue.message || rule.message,
                 details: issue.details || {},
                 location: issue.location || 'general',
+                requestId: callDetails.requestId,
+                url: url,
                 timestamp: new Date().toISOString()
               });
             });
@@ -112,7 +114,26 @@ class SecurityAnalyzer {
       'open-redirect': this.checkOpenRedirect,
       'ssrf-risk': this.checkSsrfRisk,
       'debug-endpoints': this.checkDebugEndpoints,
-      'untrusted-client-identity': this.checkUntrustedClientIdentity
+      'untrusted-client-identity': this.checkUntrustedClientIdentity,
+      'idor-in-path': this.checkIdorInPath,
+      'jwt-security': this.checkJwtSecurity,
+      'http-method-override': this.checkHttpMethodOverride,
+      'server-version-disclosure': this.checkServerVersionDisclosure,
+      'command-injection-risk': this.checkCommandInjectionRisk,
+      'xxe-risk': this.checkXxeRisk,
+      'broken-access-control': this.checkBrokenAccessControl,
+      'crlf-injection': this.checkCrlfInjection,
+      'sensitive-file-exposure': this.checkSensitiveFileExposure,
+      'authorization-header-exposure': this.checkAuthorizationHeaderExposure,
+      'ssti-risk': this.checkSstiRisk,
+      'insecure-deserialization': this.checkInsecureDeserialization,
+      'host-header-injection': this.checkHostHeaderInjection,
+      'graphql-introspection': this.checkGraphqlIntrospection,
+      'api-version-bypass': this.checkApiVersionBypass,
+      'race-condition-risk': this.checkRaceConditionRisk,
+      'ldap-injection-risk': this.checkLdapInjectionRisk,
+      'nosql-injection-risk': this.checkNoSqlInjectionRisk,
+      'sensitive-param-names': this.checkSensitiveParamNames
     };
 
     return checkers[ruleId];
@@ -173,21 +194,22 @@ class SecurityAnalyzer {
   }
 
   /**
-   * Check for weak authentication
+   * Check for weak authentication - only flag basic auth over HTTP
    */
   checkWeakAuthentication(context) {
     const issues = [];
     const rule = this.rules['weak-authentication'];
     const headers = context.headers;
     const queryParams = context.queryParams;
+    const isHttp = context.url.startsWith('http://');
 
     rule.checks.forEach(check => {
-      if (check.type === 'basic_auth') {
+      if (check.type === 'basic_auth_over_http') {
         const authHeader = headers['Authorization'] || headers['authorization'];
-        if (authHeader && new RegExp(check.pattern).test(authHeader)) {
+        if (isHttp && authHeader && new RegExp(check.pattern).test(authHeader)) {
           issues.push({
             message: check.message,
-            details: { type: 'basic_auth' },
+            details: { type: 'basic_auth_over_http', protocol: 'HTTP' },
             location: 'headers'
           });
         }
@@ -195,7 +217,7 @@ class SecurityAnalyzer {
       
       if (check.type === 'api_key_in_query') {
         const foundParams = check.params.filter(param => 
-          Object.keys(queryParams).some(qp => qp.toLowerCase().includes(param))
+          Object.keys(queryParams).some(qp => qp.toLowerCase() === param.toLowerCase())
         );
         if (foundParams.length > 0) {
           issues.push({
@@ -203,28 +225,6 @@ class SecurityAnalyzer {
             details: { params: foundParams },
             location: 'query'
           });
-        }
-      }
-      
-      if (check.type === 'credentials_in_body') {
-        const requestBody = context.requestBody;
-        if (requestBody && typeof requestBody === 'object') {
-          // Get fields with their values to check if they're encrypted
-          const foundFieldsWithValues = this.findFieldsInObject(requestBody, check.fields, true);
-          
-          // Filter out fields that contain encrypted/hashed values
-          const unencryptedFields = foundFieldsWithValues.filter(item => {
-            return !this.isEncryptedOrHashed(item.value);
-          });
-          
-          // Only report if there are unencrypted credential fields
-          if (unencryptedFields.length > 0) {
-            issues.push({
-              message: check.message,
-              details: { fields: unencryptedFields.map(item => item.path) },
-              location: 'body'
-            });
-          }
         }
       }
     });
@@ -275,22 +275,43 @@ class SecurityAnalyzer {
   }
 
   /**
-   * Check for CORS misconfiguration
+   * Check for CORS misconfiguration - enhanced with multiple checks
    */
   checkCorsMisconfiguration(context) {
     const issues = [];
+    const rule = this.rules['cors-misconfiguration'];
     const resp = context.callDetails || {};
     const responseHeaders = resp.responseHeaders || {};
+    const requestHeaders = context.headers || {};
+    
     const acao = responseHeaders['Access-Control-Allow-Origin'] || responseHeaders['access-control-allow-origin'];
     const acac = responseHeaders['Access-Control-Allow-Credentials'] || responseHeaders['access-control-allow-credentials'];
+    const requestOrigin = requestHeaders['Origin'] || requestHeaders['origin'];
 
+    // Check 1: Wildcard with credentials
     if (acao === '*' && acac && acac.toLowerCase() === 'true') {
       issues.push({
-        message: this.rules['cors-misconfiguration'].message,
-        details: {
-          acao,
-          acac
-        },
+        message: rule.checks[0].message,
+        details: { acao, acac, type: 'wildcard_with_credentials' },
+        location: 'response-headers'
+      });
+    }
+    
+    // Check 2: Null origin allowed
+    if (acao === 'null' && acac && acac.toLowerCase() === 'true') {
+      issues.push({
+        message: rule.checks[1].message,
+        details: { acao, acac, type: 'null_origin' },
+        location: 'response-headers'
+      });
+    }
+    
+    // Check 3: Origin reflection (ACAO matches request Origin exactly)
+    if (requestOrigin && acao === requestOrigin && acac && acac.toLowerCase() === 'true') {
+      // Only flag if it looks like reflection (not a legitimate allowlist match)
+      issues.push({
+        message: rule.checks[2].message,
+        details: { acao, requestOrigin, acac, type: 'origin_reflection' },
         location: 'response-headers'
       });
     }
@@ -574,13 +595,19 @@ class SecurityAnalyzer {
   }
 
   /**
-   * Check for missing authentication
+   * Check for missing authentication - with method exclusions
    */
   checkMissingAuthentication(context) {
     const issues = [];
     const rule = this.rules['missing-authentication'];
     const headers = context.headers;
     const urlPath = new URL(context.url).pathname;
+    const method = (context.method || 'GET').toUpperCase();
+
+    // Check if method is excluded (OPTIONS, HEAD)
+    if (rule.excludeMethods && rule.excludeMethods.includes(method)) {
+      return issues;
+    }
 
     // Check if path is excluded
     const isExcluded = rule.excludePaths.some(path => 
@@ -597,6 +624,7 @@ class SecurityAnalyzer {
           message: rule.message,
           details: { 
             path: urlPath,
+            method: method,
             recommendation: 'Implement proper authentication mechanism'
           },
           location: 'headers'
@@ -948,6 +976,683 @@ class SecurityAnalyzer {
         });
         console.log('[untrusted-client-identity] ⚠️ CRITICAL ISSUE DETECTED!', issues);
       }
+    }
+
+    return issues;
+  }
+
+  /**
+   * Check for IDOR via sequential IDs in URL path
+   */
+  checkIdorInPath(context) {
+    const issues = [];
+    const rule = this.rules['idor-in-path'];
+    if (!rule) return issues;
+    
+    const urlPath = new URL(context.url).pathname;
+    
+    rule.pathPatterns.forEach(pattern => {
+      const regex = new RegExp(pattern, 'i');
+      if (regex.test(urlPath)) {
+        // Extract the ID from the path
+        const idMatch = urlPath.match(/\/(\d+)(?:\/|$)/);
+        if (idMatch) {
+          issues.push({
+            message: rule.message,
+            details: { 
+              path: urlPath,
+              id: idMatch[1],
+              recommendation: 'Verify server-side authorization checks. Test with different user sessions.'
+            },
+            location: 'path'
+          });
+        }
+      }
+    });
+
+    return issues;
+  }
+
+  /**
+   * Check for JWT security issues
+   */
+  checkJwtSecurity(context) {
+    const issues = [];
+    const rule = this.rules['jwt-security'];
+    if (!rule) return issues;
+    
+    const headers = context.headers;
+    const authHeader = headers['Authorization'] || headers['authorization'];
+    
+    if (!authHeader) return issues;
+    
+    // Extract JWT token
+    const jwtMatch = authHeader.match(/(?:Bearer\s+)?(eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*)/);
+    if (!jwtMatch) return issues;
+    
+    const token = jwtMatch[1];
+    
+    try {
+      // Decode header (first part)
+      const headerPart = token.split('.')[0];
+      const headerJson = atob(headerPart.replace(/-/g, '+').replace(/_/g, '/'));
+      const header = JSON.parse(headerJson);
+      
+      // Check for 'none' algorithm
+      if (header.alg && header.alg.toLowerCase() === 'none') {
+        issues.push({
+          message: rule.checks[0].message,
+          details: { algorithm: header.alg, type: 'none_algorithm' },
+          location: 'headers'
+        });
+      }
+      
+      // Decode payload (second part)
+      const payloadPart = token.split('.')[1];
+      const payloadJson = atob(payloadPart.replace(/-/g, '+').replace(/_/g, '/'));
+      const payload = JSON.parse(payloadJson);
+      
+      // Check for missing expiry
+      if (!payload.exp) {
+        issues.push({
+          message: rule.checks[2].message,
+          details: { type: 'missing_expiry' },
+          location: 'headers'
+        });
+      } else {
+        // Check for long expiry
+        const expDate = new Date(payload.exp * 1000);
+        const now = new Date();
+        const hoursUntilExpiry = (expDate - now) / (1000 * 60 * 60);
+        
+        if (hoursUntilExpiry > rule.checks[3].maxHours) {
+          issues.push({
+            message: rule.checks[3].message,
+            details: { 
+              type: 'long_expiry',
+              expiresIn: `${Math.round(hoursUntilExpiry)} hours`,
+              expDate: expDate.toISOString()
+            },
+            location: 'headers'
+          });
+        }
+      }
+    } catch (e) {
+      // Invalid JWT format - not an issue to report
+    }
+
+    return issues;
+  }
+
+  /**
+   * Check for HTTP method override headers
+   */
+  checkHttpMethodOverride(context) {
+    const issues = [];
+    const rule = this.rules['http-method-override'];
+    if (!rule) return issues;
+    
+    const headers = context.headers;
+    
+    rule.headers.forEach(headerName => {
+      const value = headers[headerName] || headers[headerName.toLowerCase()];
+      if (value) {
+        issues.push({
+          message: rule.message,
+          details: { 
+            header: headerName,
+            value: value,
+            recommendation: 'Ensure server validates overridden method permissions'
+          },
+          location: 'headers'
+        });
+      }
+    });
+
+    return issues;
+  }
+
+  /**
+   * Check for server version disclosure
+   */
+  checkServerVersionDisclosure(context) {
+    const issues = [];
+    const rule = this.rules['server-version-disclosure'];
+    if (!rule) return issues;
+    
+    const responseHeaders = (context.callDetails && context.callDetails.responseHeaders) || {};
+    const disclosedHeaders = [];
+    
+    rule.headers.forEach(headerName => {
+      const value = responseHeaders[headerName] || responseHeaders[headerName.toLowerCase()];
+      if (value) {
+        disclosedHeaders.push({ header: headerName, value: value });
+      }
+    });
+
+    if (disclosedHeaders.length > 0) {
+      issues.push({
+        message: rule.message,
+        details: { 
+          headers: disclosedHeaders,
+          recommendation: 'Remove or obfuscate version headers in production'
+        },
+        location: 'response-headers'
+      });
+    }
+
+    return issues;
+  }
+
+  /**
+   * Check for command injection patterns
+   */
+  checkCommandInjectionRisk(context) {
+    const issues = [];
+    const rule = this.rules['command-injection-risk'];
+    if (!rule) return issues;
+    
+    const valuesToCheck = [
+      ...Object.values(context.queryParams || {}),
+      ...this.getDeepValues(context.requestBody)
+    ];
+
+    valuesToCheck.forEach(value => {
+      if (typeof value === 'string') {
+        rule.patterns.forEach(pattern => {
+          const regex = new RegExp(pattern, 'i');
+          if (regex.test(value)) {
+            issues.push({
+              message: rule.message,
+              details: { 
+                pattern,
+                sample: value.substring(0, 50) + (value.length > 50 ? '...' : '')
+              },
+              location: 'parameters'
+            });
+          }
+        });
+      }
+    });
+
+    return issues;
+  }
+
+  /**
+   * Check for XXE risk in XML content
+   */
+  checkXxeRisk(context) {
+    const issues = [];
+    const rule = this.rules['xxe-risk'];
+    if (!rule) return issues;
+    
+    const headers = context.headers;
+    const contentType = headers['Content-Type'] || headers['content-type'] || '';
+    const requestBody = context.requestBody;
+    
+    // Only check XML content
+    const isXml = rule.contentTypes.some(ct => contentType.toLowerCase().includes(ct.toLowerCase()));
+    
+    if (isXml && requestBody) {
+      const bodyStr = typeof requestBody === 'string' ? requestBody : JSON.stringify(requestBody);
+      
+      rule.patterns.forEach(pattern => {
+        const regex = new RegExp(pattern, 'i');
+        if (regex.test(bodyStr)) {
+          issues.push({
+            message: rule.message,
+            details: { 
+              contentType,
+              pattern,
+              recommendation: 'Disable external entity processing in XML parser'
+            },
+            location: 'body'
+          });
+        }
+      });
+    }
+
+    return issues;
+  }
+
+  /**
+   * Check for broken access control indicators
+   */
+  checkBrokenAccessControl(context) {
+    const issues = [];
+    const rule = this.rules['broken-access-control'];
+    if (!rule) return issues;
+    
+    const fullUrl = context.url;
+    
+    Object.entries(rule.patterns).forEach(([name, pattern]) => {
+      const regex = new RegExp(pattern, 'i');
+      if (regex.test(fullUrl)) {
+        issues.push({
+          message: rule.message,
+          details: { 
+            type: name,
+            recommendation: 'Verify server enforces authorization regardless of client parameters'
+          },
+          location: 'request'
+        });
+      }
+    });
+
+    return issues;
+  }
+
+  /**
+   * Check for CRLF injection
+   */
+  checkCrlfInjection(context) {
+    const issues = [];
+    const rule = this.rules['crlf-injection'];
+    if (!rule) return issues;
+    
+    const valuesToCheck = [
+      context.url,
+      ...Object.values(context.queryParams || {}),
+      ...Object.values(context.headers || {}),
+      ...this.getDeepValues(context.requestBody)
+    ];
+
+    valuesToCheck.forEach(value => {
+      if (typeof value === 'string') {
+        rule.patterns.forEach(pattern => {
+          if (value.toLowerCase().includes(pattern.toLowerCase())) {
+            issues.push({
+              message: rule.message,
+              details: { 
+                pattern,
+                recommendation: 'Sanitize CRLF sequences from user input'
+              },
+              location: 'parameters'
+            });
+          }
+        });
+      }
+    });
+
+    return issues;
+  }
+
+  /**
+   * Check for sensitive file exposure
+   */
+  checkSensitiveFileExposure(context) {
+    const issues = [];
+    const rule = this.rules['sensitive-file-exposure'];
+    if (!rule) return issues;
+    
+    const urlPath = new URL(context.url).pathname.toLowerCase();
+    
+    rule.patterns.forEach(pattern => {
+      const regex = new RegExp(pattern, 'i');
+      if (regex.test(urlPath)) {
+        issues.push({
+          message: rule.message,
+          details: { 
+            path: urlPath,
+            pattern,
+            recommendation: 'Block access to sensitive files via web server configuration'
+          },
+          location: 'path'
+        });
+      }
+    });
+
+    return issues;
+  }
+
+  /**
+   * Check for authorization header exposure (informational)
+   */
+  checkAuthorizationHeaderExposure(context) {
+    const issues = [];
+    const rule = this.rules['authorization-header-exposure'];
+    if (!rule) return issues;
+    
+    const headers = context.headers;
+    const authHeader = headers['Authorization'] || headers['authorization'];
+    
+    // Only flag on sensitive endpoints that shouldn't need logging
+    if (authHeader) {
+      const urlPath = new URL(context.url).pathname.toLowerCase();
+      const sensitiveEndpoints = ['/payment', '/transfer', '/admin', '/internal'];
+      
+      if (sensitiveEndpoints.some(ep => urlPath.includes(ep))) {
+        issues.push({
+          message: rule.message,
+          details: { 
+            path: urlPath,
+            recommendation: 'Ensure auth tokens are not logged server-side for this endpoint'
+          },
+          location: 'headers'
+        });
+      }
+    }
+
+    return issues;
+  }
+
+  /**
+   * Check for Server-Side Template Injection (SSTI) risk
+   */
+  checkSstiRisk(context) {
+    const issues = [];
+    const rule = this.rules['ssti-risk'];
+    if (!rule) return issues;
+    
+    const valuesToCheck = [
+      ...Object.values(context.queryParams || {}),
+      ...this.getDeepValues(context.requestBody)
+    ];
+
+    const foundPatterns = new Set();
+    valuesToCheck.forEach(value => {
+      if (typeof value === 'string') {
+        rule.patterns.forEach(pattern => {
+          const regex = new RegExp(pattern);
+          if (regex.test(value) && !foundPatterns.has(pattern)) {
+            foundPatterns.add(pattern);
+            issues.push({
+              message: rule.message,
+              details: { 
+                pattern,
+                sample: value.substring(0, 50) + (value.length > 50 ? '...' : ''),
+                recommendation: 'Sanitize template expressions from user input; use logic-less templates'
+              },
+              location: 'parameters'
+            });
+          }
+        });
+      }
+    });
+
+    return issues;
+  }
+
+  /**
+   * Check for insecure deserialization patterns
+   */
+  checkInsecureDeserialization(context) {
+    const issues = [];
+    const rule = this.rules['insecure-deserialization'];
+    if (!rule) return issues;
+    
+    const requestBody = context.requestBody;
+    const bodyStr = typeof requestBody === 'string' ? requestBody : JSON.stringify(requestBody || '');
+    
+    Object.entries(rule.patterns).forEach(([name, pattern]) => {
+      const regex = new RegExp(pattern, 'i');
+      if (regex.test(bodyStr)) {
+        issues.push({
+          message: rule.message,
+          details: { 
+            type: name,
+            recommendation: 'Avoid deserializing untrusted data; use safe formats like JSON'
+          },
+          location: 'body'
+        });
+      }
+    });
+
+    return issues;
+  }
+
+  /**
+   * Check for Host Header Injection risk
+   */
+  checkHostHeaderInjection(context) {
+    const issues = [];
+    const rule = this.rules['host-header-injection'];
+    if (!rule) return issues;
+    
+    const headers = context.headers;
+    const hostHeader = headers['Host'] || headers['host'] || '';
+    const xForwardedHost = headers['X-Forwarded-Host'] || headers['x-forwarded-host'] || '';
+    
+    const headersToCheck = [hostHeader, xForwardedHost].filter(h => h);
+    
+    headersToCheck.forEach(headerValue => {
+      rule.suspiciousPatterns.forEach(pattern => {
+        const regex = new RegExp(pattern, 'i');
+        if (regex.test(headerValue)) {
+          issues.push({
+            message: rule.message,
+            details: { 
+              value: headerValue,
+              pattern,
+              recommendation: 'Validate Host header against expected values; do not trust for URL generation'
+            },
+            location: 'headers'
+          });
+        }
+      });
+    });
+
+    return issues;
+  }
+
+  /**
+   * Check for GraphQL introspection exposure
+   */
+  checkGraphqlIntrospection(context) {
+    const issues = [];
+    const rule = this.rules['graphql-introspection'];
+    if (!rule) return issues;
+    
+    const urlPath = new URL(context.url).pathname.toLowerCase();
+    const isGraphql = urlPath.includes('graphql');
+    
+    if (!isGraphql) return issues;
+    
+    const requestBody = context.requestBody;
+    const bodyStr = typeof requestBody === 'string' ? requestBody : JSON.stringify(requestBody || '');
+    
+    rule.patterns.forEach(pattern => {
+      if (bodyStr.includes(pattern)) {
+        issues.push({
+          message: rule.message,
+          details: { 
+            pattern,
+            recommendation: 'Disable introspection in production to prevent schema disclosure'
+          },
+          location: 'body'
+        });
+      }
+    });
+
+    return issues;
+  }
+
+  /**
+   * Check for API version bypass attempts
+   */
+  checkApiVersionBypass(context) {
+    const issues = [];
+    const rule = this.rules['api-version-bypass'];
+    if (!rule) return issues;
+    
+    const urlPath = new URL(context.url).pathname.toLowerCase();
+    
+    rule.patterns.forEach(pattern => {
+      if (urlPath.includes(pattern.toLowerCase())) {
+        // Don't flag the current active version (likely v2 or higher)
+        if (!urlPath.includes('/v2/') && !urlPath.includes('/v3/') && !urlPath.includes('/api/v2') && !urlPath.includes('/api/v3')) {
+          issues.push({
+            message: rule.message,
+            details: { 
+              pattern,
+              path: urlPath,
+              recommendation: 'Ensure deprecated API versions are disabled or have equal security controls'
+            },
+            location: 'path'
+          });
+        }
+      }
+    });
+
+    return issues;
+  }
+
+  /**
+   * Check for race condition risk on sensitive endpoints
+   */
+  checkRaceConditionRisk(context) {
+    const issues = [];
+    const rule = this.rules['race-condition-risk'];
+    if (!rule) return issues;
+    
+    const method = (context.method || 'GET').toUpperCase();
+    const urlPath = new URL(context.url).pathname.toLowerCase();
+    
+    // Only check specified methods (POST, PUT, PATCH)
+    if (!rule.methods.includes(method)) return issues;
+    
+    const matchedEndpoint = rule.sensitiveEndpoints.find(endpoint => 
+      urlPath.includes(endpoint.toLowerCase())
+    );
+
+    if (matchedEndpoint) {
+      issues.push({
+        message: rule.message,
+        details: { 
+          endpoint: matchedEndpoint,
+          method,
+          recommendation: 'Implement mutex/locking, use idempotency keys, or database-level constraints'
+        },
+        location: 'path'
+      });
+    }
+
+    return issues;
+  }
+
+  /**
+   * Check for LDAP injection risk
+   */
+  checkLdapInjectionRisk(context) {
+    const issues = [];
+    const rule = this.rules['ldap-injection-risk'];
+    if (!rule) return issues;
+    
+    const valuesToCheck = [
+      ...Object.values(context.queryParams || {}),
+      ...this.getDeepValues(context.requestBody)
+    ];
+
+    const foundPatterns = new Set();
+    valuesToCheck.forEach(value => {
+      if (typeof value === 'string') {
+        rule.patterns.forEach(pattern => {
+          const regex = new RegExp(pattern.replace(/\\/g, '\\\\'), 'i');
+          if (regex.test(value) && !foundPatterns.has(pattern)) {
+            foundPatterns.add(pattern);
+            issues.push({
+              message: rule.message,
+              details: { 
+                pattern,
+                sample: value.substring(0, 50) + (value.length > 50 ? '...' : ''),
+                recommendation: 'Escape LDAP special characters: *, (, ), \\, NUL'
+              },
+              location: 'parameters'
+            });
+          }
+        });
+      }
+    });
+
+    return issues;
+  }
+
+  /**
+   * Check for NoSQL injection risk
+   */
+  checkNoSqlInjectionRisk(context) {
+    const issues = [];
+    const rule = this.rules['nosql-injection-risk'];
+    if (!rule) return issues;
+    
+    const valuesToCheck = [
+      ...Object.values(context.queryParams || {}),
+      ...this.getDeepValues(context.requestBody)
+    ];
+    
+    // Also check stringified body for operator patterns
+    const bodyStr = JSON.stringify(context.requestBody || {});
+
+    const foundPatterns = new Set();
+    
+    // Check individual values
+    valuesToCheck.forEach(value => {
+      if (typeof value === 'string') {
+        rule.patterns.forEach(pattern => {
+          const regex = new RegExp(pattern, 'i');
+          if (regex.test(value) && !foundPatterns.has(pattern)) {
+            foundPatterns.add(pattern);
+            issues.push({
+              message: rule.message,
+              details: { 
+                pattern,
+                recommendation: 'Sanitize MongoDB operators; use parameterized queries'
+              },
+              location: 'parameters'
+            });
+          }
+        });
+      }
+    });
+    
+    // Check body for MongoDB-style operators
+    rule.patterns.forEach(pattern => {
+      const regex = new RegExp(pattern, 'i');
+      if (regex.test(bodyStr) && !foundPatterns.has(pattern)) {
+        foundPatterns.add(pattern);
+        issues.push({
+          message: rule.message,
+          details: { 
+            pattern,
+            recommendation: 'Sanitize MongoDB operators; use parameterized queries'
+          },
+          location: 'body'
+        });
+      }
+    });
+
+    return issues;
+  }
+
+  /**
+   * Check for sensitive parameter names
+   */
+  checkSensitiveParamNames(context) {
+    const issues = [];
+    const rule = this.rules['sensitive-param-names'];
+    if (!rule) return issues;
+    
+    const queryParams = context.queryParams || {};
+    
+    const foundParams = [];
+    Object.keys(queryParams).forEach(param => {
+      const paramLower = param.toLowerCase();
+      rule.params.forEach(sensitiveParam => {
+        if (paramLower.includes(sensitiveParam.toLowerCase())) {
+          foundParams.push(param);
+        }
+      });
+    });
+
+    if (foundParams.length > 0) {
+      issues.push({
+        message: rule.message,
+        details: { 
+          params: foundParams,
+          recommendation: 'Move sensitive parameters to request body or headers; use HTTPS'
+        },
+        location: 'query'
+      });
     }
 
     return issues;

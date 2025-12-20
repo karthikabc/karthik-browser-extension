@@ -684,23 +684,29 @@ body {
   max-height: 600px;
 }
 
-.column-title {
-  margin: 0;
-  padding: 0.75rem 1rem;
+.column-header-row {
+  display: flex;
+  justify-content: flex-start;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.5rem 1rem;
   background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.column-title-text {
+  margin: 0;
   font-size: 0.875rem;
   font-weight: 600;
-  color: var(--text-primary);
-  border-bottom: 1px solid var(--border-color);
   letter-spacing: 0.05em;
 }
 
-.request-column .column-title {
-  background: #fef3c7;
-  color: #92400e;
+.request-column .column-header-row {
+  background: #dbeafe;
+  color: #1e40af;
 }
 
-.response-column .column-title {
+.response-column .column-header-row {
   background: #dbeafe;
   color: #1e40af;
 }
@@ -735,6 +741,70 @@ body {
   background: var(--primary-color);
   color: white;
   border-color: var(--primary-color);
+}
+
+/* Section title with copy icon */
+.section-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.section-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.copy-icon-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  font-size: 0.875rem;
+  line-height: 1;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  opacity: 0.6;
+}
+
+.copy-icon-btn:hover {
+  background: var(--bg-tertiary);
+  opacity: 1;
+}
+
+.copy-icon-btn.copied {
+  color: var(--success-color);
+  opacity: 1;
+}
+
+/* Headers and Body sections */
+.headers-section,
+.body-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.headers-section pre,
+.body-section pre {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  font-family: 'SF Mono', Monaco, 'Cascadia Mono', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  overflow: auto;
+  white-space: pre;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: none;
+  flex: 1;
+  min-height: 100px;
+  max-height: 250px;
 }
 
 /* Old details sections - keep for backwards compatibility */

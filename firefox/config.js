@@ -70,36 +70,18 @@ const CONFIG = {
 // Security utilities
 const SecurityUtils = {
   sanitizeHeader: function(headerName, headerValue) {
-    const lowerName = headerName.toLowerCase();
-    if (CONFIG.SENSITIVE_HEADERS.some(h => lowerName.includes(h))) {
-      return '***REDACTED***';
-    }
+    // No redaction as per user request
     return headerValue;
   },
   
   sanitizeQueryParam: function(paramName, paramValue) {
-    const lowerName = paramName.toLowerCase();
-    if (CONFIG.SENSITIVE_QUERY_PARAMS.some(p => lowerName.includes(p))) {
-      return '***REDACTED***';
-    }
+    // No redaction as per user request
     return paramValue;
   },
   
   sanitizeUrl: function(url) {
-    try {
-      const urlObj = new URL(url);
-      const params = new URLSearchParams(urlObj.search);
-      const sanitizedParams = new URLSearchParams();
-      
-      for (const [key, value] of params) {
-        sanitizedParams.set(key, this.sanitizeQueryParam(key, value));
-      }
-      
-      urlObj.search = sanitizedParams.toString();
-      return urlObj.toString();
-    } catch (e) {
-      return url;
-    }
+    // No redaction as per user request
+    return url;
   },
   
   escapeHtml: function(unsafe) {

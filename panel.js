@@ -505,9 +505,9 @@ function showEndpointDetails(endpoint) {
   const securitySection = createSecurityIssuesSection(data);
   requestDetails.appendChild(securitySection);
   
-  // Tags section
+  // User Notes section
   const tagsSection = createElement('div', 'detail-section');
-  tagsSection.appendChild(createElement('h3', null, 'Tags'));
+  tagsSection.appendChild(createElement('h3', null, 'User Notes'));
   
   const tagsContainer = createElement('div', 'tags-container');
   const endpointTagsSet = endpointTags.get(endpoint) || new Set();
@@ -546,7 +546,7 @@ function showEndpointDetails(endpoint) {
   const addTagContainer = createElement('div', 'add-tag-container');
   const tagInput = createElement('input', 'tag-input', '', {
     type: 'text',
-    placeholder: 'Add a tag...',
+    placeholder: 'Add a note...',
     list: 'tag-suggestions'
   });
   
@@ -577,7 +577,7 @@ function showEndpointDetails(endpoint) {
     datalist.appendChild(option);
   });
   
-  const addTagBtn = createElement('button', 'add-tag-btn', 'Add Tag');
+  const addTagBtn = createElement('button', 'add-tag-btn', 'Add Note');
   
   // Update the container click handler to include the button reference
   addTagContainer.addEventListener('click', (e) => {
@@ -663,15 +663,6 @@ function showEndpointDetails(endpoint) {
       
       const callActions = createElement('div', 'call-actions');
       
-  //View Raw button (open by default)
-  const viewRawButton = createElement('button', 'view-raw-btn', 'Hide Raw');
-      viewRawButton.addEventListener('click', (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        toggleRawView(callItem, call, data);
-      });
-      
       // Copy cURL button
       const curlButton = createElement('button', 'copy-curl-btn', 'Copy cURL');
       curlButton.addEventListener('click', (e) => {
@@ -681,7 +672,6 @@ function showEndpointDetails(endpoint) {
         copyCurlCommand(data, call);
       });
       
-      callActions.appendChild(viewRawButton);
       callActions.appendChild(curlButton);
       
       callHeader.appendChild(callInfo);
@@ -697,49 +687,127 @@ function showEndpointDetails(endpoint) {
       
       // === REQUEST COLUMN ===
       const requestColumn = createElement('div', 'http-column request-column');
-      requestColumn.appendChild(createElement('h4', 'column-title', 'REQUEST'));
       
-      // Build raw HTTP request
-      const requestRaw = buildRawHttpRequest(call, data);
-      const requestPre = createElement('pre', 'raw-http-text');
-      requestPre.textContent = requestRaw;
-      requestColumn.appendChild(requestPre);
+      // Request Column Header with Copy Button
+      const reqColHeader = createElement('div', 'column-header-row');
       
-      //Copy Request button
-      const copyRequestBtn = createElement('button', 'copy-raw-btn', 'Copy Request');
-      copyRequestBtn.addEventListener('click', (e) => {
+      reqColHeader.appendChild(createElement('h4', 'column-title-text', 'REQUEST'));
+      
+      const copyReqBtn = createElement('button', 'copy-icon-btn', '');
+      copyReqBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-copy" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1z"/></svg>';
+      copyReqBtn.title = 'Copy Entire Request';
+      const fullReqText = buildRawHttpRequest(call, data);
+      copyReqBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        navigator.clipboard.writeText(requestRaw);
-        copyRequestBtn.textContent = 'Copied!';
-        setTimeout(() => copyRequestBtn.textContent = 'Copy Request', 2000);
+        navigator.clipboard.writeText(fullReqText);
+        const original = copyReqBtn.innerHTML;
+        copyReqBtn.textContent = '✓';
+        setTimeout(() => copyReqBtn.innerHTML = original, 1500);
       });
-      requestColumn.appendChild(copyRequestBtn);
+      reqColHeader.appendChild(copyReqBtn);
+      
+      requestColumn.appendChild(reqColHeader);
+      
+      // Request Headers Section with copy icon
+      const reqHeadersTitle = createElement('div', 'section-title-row');
+      reqHeadersTitle.appendChild(createElement('span', 'section-label', 'Headers'));
+      const copyReqHeadersBtn = createElement('button', 'copy-icon-btn', '📋');
+      copyReqHeadersBtn.title = 'Copy Request Headers';
+      const reqHeadersText = buildRequestHeaders(call, data);
+      copyReqHeadersBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(reqHeadersText);
+        copyReqHeadersBtn.textContent = '✓';
+        setTimeout(() => copyReqHeadersBtn.textContent = '📋', 1500);
+      });
+      reqHeadersTitle.appendChild(copyReqHeadersBtn);
+      requestColumn.appendChild(reqHeadersTitle);
+      
+      const reqHeadersPre = createElement('pre', 'raw-http-text headers-section');
+      reqHeadersPre.textContent = reqHeadersText;
+      requestColumn.appendChild(reqHeadersPre);
+      
+      // Request Body Section with copy icon
+      const reqBodyTitle = createElement('div', 'section-title-row');
+      reqBodyTitle.appendChild(createElement('span', 'section-label', 'Body'));
+      const copyReqBodyBtn = createElement('button', 'copy-icon-btn', '📋');
+      copyReqBodyBtn.title = 'Copy Request Body';
+      const reqBodyText = buildRequestBody(call);
+      copyReqBodyBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(reqBodyText);
+        copyReqBodyBtn.textContent = '✓';
+        setTimeout(() => copyReqBodyBtn.textContent = '📋', 1500);
+      });
+      reqBodyTitle.appendChild(copyReqBodyBtn);
+      requestColumn.appendChild(reqBodyTitle);
+      
+      const reqBodyPre = createElement('pre', 'raw-http-text body-section');
+      reqBodyPre.textContent = reqBodyText || '(No request body)';
+      requestColumn.appendChild(reqBodyPre);
       
       httpGrid.appendChild(requestColumn);
       
       // === RESPONSE COLUMN ===
       const responseColumn = createElement('div', 'http-column response-column');
-      responseColumn.appendChild(createElement('h4', 'column-title', 'RESPONSE'));
       
-      // Build raw HTTP response
-      const responseRaw = buildRawHttpResponse(call);
-      const responsePre = createElement('pre', 'raw-http-text');
-      responsePre.textContent = responseRaw;
-      responseColumn.appendChild(responsePre);
+      // Response Column Header with Copy Button
+      const resColHeader = createElement('div', 'column-header-row');
       
-      //Copy Response button
-      const copyResponseBtn = createElement('button', 'copy-raw-btn', 'Copy Response');
-      copyResponseBtn.addEventListener('click', (e) => {
+      resColHeader.appendChild(createElement('h4', 'column-title-text', 'RESPONSE'));
+      
+      const copyResBtn = createElement('button', 'copy-icon-btn', '');
+      copyResBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-copy" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1z"/></svg>';
+      copyResBtn.title = 'Copy Entire Response';
+      const fullResText = buildRawHttpResponse(call);
+      copyResBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        navigator.clipboard.writeText(responseRaw);
-        copyResponseBtn.textContent = 'Copied!';
-        setTimeout(() => copyResponseBtn.textContent = 'Copy Response', 2000);
+        navigator.clipboard.writeText(fullResText);
+        const original = copyResBtn.innerHTML;
+        copyResBtn.textContent = '✓';
+        setTimeout(() => copyResBtn.innerHTML = original, 1500);
       });
-      responseColumn.appendChild(copyResponseBtn);
+      resColHeader.appendChild(copyResBtn);
+      
+      responseColumn.appendChild(resColHeader);
+      
+      // Response Headers Section with copy icon
+      const resHeadersTitle = createElement('div', 'section-title-row');
+      resHeadersTitle.appendChild(createElement('span', 'section-label', 'Headers'));
+      const copyResHeadersBtn = createElement('button', 'copy-icon-btn', '📋');
+      copyResHeadersBtn.title = 'Copy Response Headers';
+      const resHeadersText = buildResponseHeaders(call);
+      copyResHeadersBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(resHeadersText);
+        copyResHeadersBtn.textContent = '✓';
+        setTimeout(() => copyResHeadersBtn.textContent = '📋', 1500);
+      });
+      resHeadersTitle.appendChild(copyResHeadersBtn);
+      responseColumn.appendChild(resHeadersTitle);
+      
+      const resHeadersPre = createElement('pre', 'raw-http-text headers-section');
+      resHeadersPre.textContent = resHeadersText;
+      responseColumn.appendChild(resHeadersPre);
+      
+      // Response Body Section with copy icon
+      const resBodyTitle = createElement('div', 'section-title-row');
+      resBodyTitle.appendChild(createElement('span', 'section-label', 'Body'));
+      const copyResBodyBtn = createElement('button', 'copy-icon-btn', '📋');
+      copyResBodyBtn.title = 'Copy Response Body';
+      const resBodyText = buildResponseBody(call);
+      copyResBodyBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(resBodyText);
+        copyResBodyBtn.textContent = '✓';
+        setTimeout(() => copyResBodyBtn.textContent = '📋', 1500);
+      });
+      resBodyTitle.appendChild(copyResBodyBtn);
+      responseColumn.appendChild(resBodyTitle);
+      
+      const resBodyPre = createElement('pre', 'raw-http-text body-section');
+      resBodyPre.textContent = resBodyText;
+      responseColumn.appendChild(resBodyPre);
       
       httpGrid.appendChild(responseColumn);
       
@@ -766,6 +834,16 @@ function createInfoItem(label, value) {
 // Build raw HTTP request
 function buildRawHttpRequest(call, data) {
   const lines = [];
+  lines.push(buildRequestHeaders(call, data));
+  lines.push('');
+  const body = buildRequestBody(call);
+  if (body) lines.push(body);
+  return lines.join('\n');
+}
+
+// Build request headers only
+function buildRequestHeaders(call, data) {
+  const lines = [];
   
   // Request line
   const url = new URL(call.url);
@@ -773,7 +851,7 @@ function buildRawHttpRequest(call, data) {
   lines.push(`${data.method} ${pathAndQuery} HTTP/1.1`);
   lines.push(`Host: ${url.host}`);
   
-  // Headers
+  // ALL Headers - no filtering
   if (call.allHeaders) {
     Object.entries(call.allHeaders).forEach(([name, value]) => {
       if (name.toLowerCase() !== 'host') { // Skip host, already added
@@ -782,66 +860,66 @@ function buildRawHttpRequest(call, data) {
     });
   }
   
-  // Empty line before body
-  lines.push('');
-  
-  // Body
+  return lines.join('\n');
+}
+
+// Build request body only
+function buildRequestBody(call) {
   if (call.requestBody) {
     if (typeof call.requestBody === 'object') {
-      lines.push(JSON.stringify(call.requestBody, null, 2));
+      return JSON.stringify(call.requestBody, null, 2);
     } else {
-      lines.push(call.requestBody);
+      return call.requestBody;
     }
   }
-  
-  return lines.join('\n');
+  return '';
 }
 
 // Build raw HTTP response
 function buildRawHttpResponse(call) {
   const lines = [];
+  lines.push(buildResponseHeaders(call));
+  lines.push('');
+  lines.push(buildResponseBody(call));
+  return lines.join('\n');
+}
+
+// Build response headers only
+function buildResponseHeaders(call) {
+  const lines = [];
   
   // Status line
   lines.push(`HTTP/1.1 ${call.status || 'Pending'} ${call.statusLine || ''}`);
   
-  // Response headers
+  // ALL Response headers - no filtering
   if (call.responseHeaders && Object.keys(call.responseHeaders).length > 0) {
     Object.entries(call.responseHeaders).forEach(([name, value]) => {
       lines.push(`${name}: ${value}`);
     });
   }
   
-  // Empty line before body
-  lines.push('');
-  
-  // Response body (if captured)
+  return lines.join('\n');
+}
+
+// Build response body only
+function buildResponseBody(call) {
   if (call.responseBody) {
     try {
       // Try to parse as JSON for pretty printing
       const parsed = JSON.parse(call.responseBody);
-      lines.push(JSON.stringify(parsed, null, 2));
+      return JSON.stringify(parsed, null, 2);
     } catch {
       // Not JSON, show as-is
-      lines.push(call.responseBody);
+      return call.responseBody;
     }
   } else {
     // Body note when not available
     if (!responseBodiesEnabled) {
-      lines.push('WARNING: Response body capture is disabled.');
-      lines.push('');
-      lines.push('Enable "Response Bodies" checkbox in the header to capture response bodies.');
-      lines.push('Note: This requires debugger permission and will show a warning banner.');
+      return 'Response body capture is disabled.\nEnable "Response Bodies" checkbox to capture.';
     } else {
-      lines.push('WARNING: Response body not available for this request.');
-      lines.push('');
-      lines.push('Possible reasons:');
-      lines.push('- Response had no body (204, 304, etc.)');
-      lines.push('- Binary content (images, files)');
-      lines.push('- Response not fully loaded yet');
+      return '(Response body not available)';
     }
   }
-  
-  return lines.join('\n');
 }
 
 // Toggle raw view
@@ -1265,7 +1343,8 @@ function generateExcelReport() {
       'Vulnerability Name',
       'Description',
       'Location',
-      'Technical Details'
+      'Technical Details',
+      'User Notes'
     ];
     
     let csvContent = headers.join(',') + '\n';
@@ -1274,6 +1353,10 @@ function generateExcelReport() {
     selectedEndpoints.forEach(endpoint => {
       const data = apiData.get(endpoint);
       if (data && data.securityIssues && data.securityIssues.length > 0) {
+        // Get user notes (tags) for this endpoint
+        const tags = endpointTags.get(endpoint);
+        const userNotes = tags ? Array.from(tags).join('; ') : '';
+
         data.securityIssues.forEach(issue => {
           issueCount++;
           
@@ -1291,7 +1374,8 @@ function generateExcelReport() {
             `"${(issue.name || '').replace(/"/g, '""')}"`,
             `"${(issue.message || '').replace(/"/g, '""')}"`,
             `"${(issue.location || '').replace(/"/g, '""')}"`,
-            `"${detailsStr}"`
+            `"${detailsStr}"`,
+            `"${userNotes.replace(/"/g, '""')}"`
           ];
           
           csvContent += row.join(',') + '\n';
@@ -1569,7 +1653,7 @@ function addFilterControls() {
     id: 'tag-dropdown'
   });
   
-  const tagButton = createElement('button', 'tag-filter-btn', 'All tags', {
+  const tagButton = createElement('button', 'tag-filter-btn', 'All notes', {
     type: 'button',
     id: 'tag-filter-btn'
   });
@@ -1586,7 +1670,7 @@ function addFilterControls() {
     }
     
     if (allTags.size === 0) {
-      const emptyMsg = createElement('div', 'tag-empty-msg', 'No tags yet');
+      const emptyMsg = createElement('div', 'tag-empty-msg', 'No notes yet');
       tagDropdownContent.appendChild(emptyMsg);
     } else {
       Array.from(allTags).sort().forEach(tag => {
@@ -1628,7 +1712,7 @@ function addFilterControls() {
     groupByTags = e.target.checked;
     updateEndpointsList();
   });
-  const groupLabel = createElement('span', null, 'Group by tags');
+  const groupLabel = createElement('span', null, 'Group by notes');
   groupToggle.appendChild(groupCheckbox);
   groupToggle.appendChild(groupLabel);
   tagDropdownContent.appendChild(createElement('hr', 'dropdown-divider'));
@@ -1656,11 +1740,11 @@ function addFilterControls() {
   // Update button text based on selection
   function updateTagButtonText() {
     if (filterTags.size === 0) {
-      tagButton.textContent = 'All tags';
+      tagButton.textContent = 'All notes';
     } else if (filterTags.size === allTags.size) {
-      tagButton.textContent = 'All tags';
+      tagButton.textContent = 'All notes';
     } else {
-      tagButton.textContent = `${filterTags.size} tags`;
+      tagButton.textContent = `${filterTags.size} notes`;
     }
   }
   
@@ -2389,6 +2473,39 @@ function generateCombinedAiPrompt() {
 /**
  * Generate AI prompt for security issue
  */
+function generateCurlCommand(call) {
+  let curl = `curl -X ${call.method} "${call.url}"`;
+  
+  if (call.requestHeaders) {
+    const headers = call.requestHeaders;
+    if (typeof headers === 'object' && !Array.isArray(headers)) {
+      Object.entries(headers).forEach(([key, value]) => {
+        curl += ` \\\n  -H "${key}: ${value}"`;
+      });
+    }
+  }
+  
+  if (call.requestBody) {
+    let bodyStr = '';
+    if (typeof call.requestBody === 'string') {
+      bodyStr = call.requestBody;
+    } else {
+      try {
+        bodyStr = JSON.stringify(call.requestBody);
+      } catch (e) {
+        bodyStr = '';
+      }
+    }
+    
+    if (bodyStr) {
+      const escapedBody = bodyStr.replace(/'/g, "'\\''");
+      curl += ` \\\n  -d '${escapedBody}'`;
+    }
+  }
+  
+  return curl;
+}
+
 function generateAiPrompt(issue, endpointData) {
   let prompt = `I found a security vulnerability in my application. Here are the details:\n\n`;
   prompt += `Name: ${issue.name}\n`;
@@ -2432,13 +2549,71 @@ function generateAiPrompt(issue, endpointData) {
   return prompt;
 }
 
+// Helper to format security issues for clipboard
+function formatSecurityIssuesForCopy(issues) {
+  if (!issues || issues.length === 0) return 'No security issues detected.';
+  
+  return issues.map(issue => {
+    let detailsStr = 'N/A';
+    if (issue.details) {
+      if (typeof issue.details === 'object') {
+        // Format object details nicely
+        const entries = Object.entries(issue.details);
+        if (entries.length > 0) {
+          detailsStr = entries
+            .map(([key, value]) => `${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`)
+            .join('\n  ');
+        } else {
+          detailsStr = JSON.stringify(issue.details);
+        }
+      } else {
+        detailsStr = String(issue.details);
+      }
+    }
+    
+    return `[${issue.severity.toUpperCase()}] ${issue.name || issue.ruleId}\n${issue.message}\nDetails:\n  ${detailsStr}`;
+  }).join('\n\n----------------------------------------\n\n');
+}
+
 /**
  * Create security issues display section
  */
 function createSecurityIssuesSection(data) {
   const section = createElement('div', 'detail-section security-section');
+  
+  // Header row with copy button
+  const headerRow = createElement('div', 'section-title-row');
+  headerRow.style.background = 'transparent';
+  headerRow.style.borderBottom = 'none';
+  headerRow.style.padding = '0';
+  headerRow.style.marginBottom = '1rem';
+  headerRow.style.justifyContent = 'flex-start';
+  headerRow.style.alignItems = 'center';
+  headerRow.style.gap = '0.75rem';
+
+  const copyBtn = createElement('button', 'copy-icon-btn', '');
+  copyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-copy" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1z"/></svg>';
+  copyBtn.title = 'Copy All Security Vulnerabilities';
+  
+  if (data.securityIssues && data.securityIssues.length > 0) {
+    const issuesText = formatSecurityIssuesForCopy(data.securityIssues);
+    copyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(issuesText);
+      const original = copyBtn.innerHTML;
+      copyBtn.textContent = '✓';
+      setTimeout(() => copyBtn.innerHTML = original, 1500);
+    });
+  } else {
+    copyBtn.style.display = 'none';
+  }
+
   const header = createElement('h3', null, 'Security Analysis');
-  section.appendChild(header);
+  header.style.margin = '0';
+  
+  headerRow.appendChild(header);
+  headerRow.appendChild(copyBtn);
+  section.appendChild(headerRow);
 
   if (!data.securityIssues || data.securityIssues.length === 0) {
     const noIssues = createElement('div', 'security-no-issues');
@@ -2540,6 +2715,45 @@ function createSecurityIssuesSection(data) {
         });
         
         issueItem.appendChild(askAiBtn);
+
+        // Add Copy cURL button
+        const copyCurlBtn = createElement('button', 'secondary-btn', 'Copy cURL');
+        copyCurlBtn.style.marginTop = '8px';
+        copyCurlBtn.style.marginBottom = '8px';
+        copyCurlBtn.style.marginRight = '10px';
+        copyCurlBtn.style.fontSize = '12px';
+        copyCurlBtn.style.padding = '4px 10px';
+        copyCurlBtn.title = 'Copy request as cURL command (Network tab selection is not supported by Chrome API)';
+        
+        copyCurlBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          
+          // Find the specific call that triggered this issue
+          const call = data.calls.find(c => c.requestId === issue.requestId) || 
+                       data.calls[data.calls.length - 1]; // Fallback to latest call
+          
+          if (call) {
+            const curl = generateCurlCommand(call);
+            navigator.clipboard.writeText(curl).then(() => {
+              const originalText = 'Copy cURL';
+              copyCurlBtn.textContent = 'Copied!';
+              copyCurlBtn.style.background = '#10b981';
+              copyCurlBtn.style.color = 'white';
+              copyCurlBtn.style.borderColor = '#10b981';
+              
+              setTimeout(() => {
+                copyCurlBtn.textContent = originalText;
+                copyCurlBtn.style.background = '';
+                copyCurlBtn.style.color = '';
+                copyCurlBtn.style.borderColor = '';
+              }, 2000);
+            });
+          } else {
+            alert('Could not find request details to generate cURL');
+          }
+        });
+        issueItem.appendChild(copyCurlBtn);
         
         if (issue.details && Object.keys(issue.details).length > 0) {
           const detailsBtn = createElement('button', 'security-details-btn', 'Details ▲');
