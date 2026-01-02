@@ -7,6 +7,9 @@ const CONFIG = {
   UPDATE_INTERVAL: 1000,
   DEBOUNCE_DELAY: 300,
   
+  // AI Settings
+  AI_MODEL: 'Claude Haiku 4.5',
+
   // Security
   SENSITIVE_HEADERS: [
     'authorization',

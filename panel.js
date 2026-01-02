@@ -16,7 +16,9 @@ let currentDataVersion = 0; // to ignore stale updates after Clear
 let securityAnalyzer = null; // Security analyzer instance
 let securityRulesConfig = null; // Current security rules configuration
 
+console.log('[GAMX Chrome Panel] Connecting to background script...');
 const port = chrome.runtime.connect({ name: "devtools-panel" });
+console.log('[GAMX Chrome Panel] Port created:', port);
 
 // Local clear to reset UI/state immediately
 function clearAllDataLocal() {
@@ -29,14 +31,15 @@ function clearAllDataLocal() {
     filterTags.clear();
     filterHosts.clear();
     hostsList.clear();
-    updateEndpointsList();
-    updateSelectionInfo();
+    if (typeof updateEndpointsList === 'function') updateEndpointsList();
+    if (typeof updateSelectionInfo === 'function') updateSelectionInfo();
     if (typeof updateTagFilter === 'function') updateTagFilter();
     if (typeof updateHostFilter === 'function') updateHostFilter();
     if (typeof updateSecuritySummary === 'function') updateSecuritySummary();
     if (requestDetails) requestDetails.textContent = 'Select an endpoint to view details';
+    console.log('[GAMX Chrome] clearAllDataLocal completed successfully');
   } catch (e) {
-    console.warn('Local clear failed:', e);
+    console.warn('[GAMX Chrome] Local clear failed:', e);
   }
 }
 
@@ -699,10 +702,13 @@ function showEndpointDetails(endpoint) {
       const fullReqText = buildRawHttpRequest(call, data);
       copyReqBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        navigator.clipboard.writeText(fullReqText);
-        const original = copyReqBtn.innerHTML;
-        copyReqBtn.textContent = '✓';
-        setTimeout(() => copyReqBtn.innerHTML = original, 1500);
+        copyToClipboard(fullReqText).then(success => {
+          if (success) {
+            const original = copyReqBtn.innerHTML;
+            copyReqBtn.textContent = '✓';
+            setTimeout(() => copyReqBtn.innerHTML = original, 1500);
+          }
+        });
       });
       reqColHeader.appendChild(copyReqBtn);
       
@@ -716,9 +722,12 @@ function showEndpointDetails(endpoint) {
       const reqHeadersText = buildRequestHeaders(call, data);
       copyReqHeadersBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        navigator.clipboard.writeText(reqHeadersText);
-        copyReqHeadersBtn.textContent = '✓';
-        setTimeout(() => copyReqHeadersBtn.textContent = '📋', 1500);
+        copyToClipboard(reqHeadersText).then(success => {
+          if (success) {
+            copyReqHeadersBtn.textContent = '✓';
+            setTimeout(() => copyReqHeadersBtn.textContent = '📋', 1500);
+          }
+        });
       });
       reqHeadersTitle.appendChild(copyReqHeadersBtn);
       requestColumn.appendChild(reqHeadersTitle);
@@ -735,9 +744,12 @@ function showEndpointDetails(endpoint) {
       const reqBodyText = buildRequestBody(call);
       copyReqBodyBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        navigator.clipboard.writeText(reqBodyText);
-        copyReqBodyBtn.textContent = '✓';
-        setTimeout(() => copyReqBodyBtn.textContent = '📋', 1500);
+        copyToClipboard(reqBodyText).then(success => {
+          if (success) {
+            copyReqBodyBtn.textContent = '✓';
+            setTimeout(() => copyReqBodyBtn.textContent = '📋', 1500);
+          }
+        });
       });
       reqBodyTitle.appendChild(copyReqBodyBtn);
       requestColumn.appendChild(reqBodyTitle);
@@ -762,10 +774,13 @@ function showEndpointDetails(endpoint) {
       const fullResText = buildRawHttpResponse(call);
       copyResBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        navigator.clipboard.writeText(fullResText);
-        const original = copyResBtn.innerHTML;
-        copyResBtn.textContent = '✓';
-        setTimeout(() => copyResBtn.innerHTML = original, 1500);
+        copyToClipboard(fullResText).then(success => {
+          if (success) {
+            const original = copyResBtn.innerHTML;
+            copyResBtn.textContent = '✓';
+            setTimeout(() => copyResBtn.innerHTML = original, 1500);
+          }
+        });
       });
       resColHeader.appendChild(copyResBtn);
       
@@ -779,9 +794,12 @@ function showEndpointDetails(endpoint) {
       const resHeadersText = buildResponseHeaders(call);
       copyResHeadersBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        navigator.clipboard.writeText(resHeadersText);
-        copyResHeadersBtn.textContent = '✓';
-        setTimeout(() => copyResHeadersBtn.textContent = '📋', 1500);
+        copyToClipboard(resHeadersText).then(success => {
+          if (success) {
+            copyResHeadersBtn.textContent = '✓';
+            setTimeout(() => copyResHeadersBtn.textContent = '📋', 1500);
+          }
+        });
       });
       resHeadersTitle.appendChild(copyResHeadersBtn);
       responseColumn.appendChild(resHeadersTitle);
@@ -798,9 +816,12 @@ function showEndpointDetails(endpoint) {
       const resBodyText = buildResponseBody(call);
       copyResBodyBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        navigator.clipboard.writeText(resBodyText);
-        copyResBodyBtn.textContent = '✓';
-        setTimeout(() => copyResBodyBtn.textContent = '📋', 1500);
+        copyToClipboard(resBodyText).then(success => {
+          if (success) {
+            copyResBodyBtn.textContent = '✓';
+            setTimeout(() => copyResBodyBtn.textContent = '📋', 1500);
+          }
+        });
       });
       resBodyTitle.appendChild(copyResBodyBtn);
       responseColumn.appendChild(resBodyTitle);
@@ -982,8 +1003,10 @@ function analyzeStructure(obj) {
 
 // Port message handler with error handling
 port.onMessage.addListener((msg) => {
+  console.log('[GAMX Chrome Panel] Message received:', msg.type);
   try {
     if (msg.type === "CONNECTION_READY") {
+      console.log('[GAMX Chrome Panel] Connection ready!');
       if (typeof msg.version === 'number') currentDataVersion = msg.version;
       isConnected = true;
       showStatus('Connected to GAMX Extension', 'success');
@@ -992,6 +1015,7 @@ port.onMessage.addListener((msg) => {
       // Check response bodies status
       safePostMessage({ type: "GET_RESPONSE_BODIES_STATUS" });
     } else if (msg.type === "API_CALLS_DATA") {
+      console.log('[GAMX Chrome Panel] API_CALLS_DATA received, count:', msg.data?.length);
       if (typeof msg.version === 'number' && msg.version < currentDataVersion) {
         // stale message after a clear; ignore
         return;
@@ -1031,7 +1055,9 @@ port.onMessage.addListener((msg) => {
       responseBodiesEnabled = msg.enabled;
       responseBodiesCheckbox.checked = msg.enabled;
       if (msg.message) {
-        showStatus(msg.message, msg.enabled ? 'success' : 'info');
+        // Show warning for Firefox not supporting response bodies
+        const isNotAvailable = msg.message.includes('not available');
+        showStatus(msg.message, msg.enabled ? 'success' : (isNotAvailable ? 'warning' : 'info'));
       }
       if (msg.enabled) {
         showStatus('WARNING: Response body capture enabled. You may see a debugger warning banner.', 'warning', 5000);
@@ -1061,10 +1087,12 @@ port.onDisconnect.addListener(() => {
   }
 });
 
-// Chrome runtime message handler
+// Browser runtime message handler
 chrome.runtime.onMessage.addListener((msg) => {
+  console.log('[GAMX Chrome Panel] Runtime message received:', msg.type);
   try {
     if (msg.type === "API_CALL_DETECTED") {
+      console.log('[GAMX Chrome Panel] API_CALL_DETECTED:', msg.endpoint);
       // If we've just cleared, ensure we're not showing stale items by requiring currentDataVersion to be stable
       // Since runtime messages have no version, we accept them but state was cleared already; nothing extra needed
       // Convert arrays back to Sets if needed
@@ -1157,6 +1185,33 @@ function showStatus(message, type = 'info', duration = 3000) {
   }, duration);
 }
 
+// Robust copy to clipboard function with fallback
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (err) {
+    console.warn('Clipboard API failed, trying fallback:', err);
+    try {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-9999px';
+      textArea.style.top = '0';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textArea);
+      if (successful) return true;
+      throw new Error('Fallback copy failed');
+    } catch (fallbackErr) {
+      console.error('Copy failed:', fallbackErr);
+      return false;
+    }
+  }
+}
+
 // Copy curl command to clipboard
 function copyCurlCommand(data, call) {
   // Build curl command
@@ -1194,140 +1249,171 @@ function copyCurlCommand(data, call) {
   }
   
   // Copy to clipboard
-  navigator.clipboard.writeText(curl).then(() => {
-    showStatus('cURL command copied to clipboard', 'success');
-  }).catch(() => {
-    showStatus('Failed to copy to clipboard', 'error');
+  copyToClipboard(curl).then(success => {
+    if (success) {
+      showStatus('cURL command copied to clipboard', 'success');
+    } else {
+      showStatus('Failed to copy to clipboard', 'error');
+    }
   });
 }
 
 // Event listeners
-clearBtn.addEventListener('click', () => {
-  console.log('Clear button clicked');
-  if (confirm('Are you sure you want to clear all captured data?')) {
-    console.log('User confirmed clear');
-    // Clear UI immediately for responsiveness
-    clearAllDataLocal();
-    // Optimistically bump version to ignore stale responses until background confirms
-    currentDataVersion += 1;
-    showStatus('Clearing data...', 'info');
-    const sent = safePostMessage({ type: "CLEAR_DATA" });
-    if (!sent) {
-      showStatus('Failed to notify background - connection lost. UI cleared locally.', 'warning');
-    } else {
-      console.log('Clear data message sent successfully');
+if (clearBtn) {
+  clearBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('[GAMX Chrome] Clear button clicked');
+    
+    try {
+      // Removed confirm dialog to avoid blocking issues in DevTools
+      console.log('[GAMX Chrome] Clearing data...');
+      
+      // Clear UI immediately for responsiveness
+      clearAllDataLocal();
+      
+      // Optimistically bump version to ignore stale responses until background confirms
+      currentDataVersion += 1;
+      showStatus('Data cleared', 'success');
+      
+      try {
+        port.postMessage({ type: "CLEAR_DATA" });
+        console.log('[GAMX Chrome] Clear data message sent successfully');
+      } catch (err) {
+        console.error('[GAMX Chrome] Failed to send CLEAR_DATA:', err);
+        // showStatus('Data cleared locally (background notification failed)', 'warning');
+      }
+    } catch (err) {
+      console.error('[GAMX Chrome] Error in clear handler:', err);
+      showStatus('Error clearing data: ' + err.message, 'error');
     }
-  } else {
-    console.log('User cancelled clear');
-  }
-});
+  });
+} else {
+  console.error('[GAMX Chrome] clearBtn element not found!');
+}
 
-exportBtn.addEventListener('click', () => {
-  try {
+if (exportBtn) {
+  exportBtn.addEventListener('click', () => {
+    try {
+      if (selectedEndpoints.size === 0) {
+        showStatus('Please select at least one endpoint to export', 'error');
+        return;
+      }
+      
+      const openApiSpec = generateOpenApiSpec(true); // Pass true to filter by selection
+      
+      const blob = new Blob([JSON.stringify(openApiSpec, null, 2)], 
+        { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `openapi-spec-${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      
+      showStatus(`Exported ${selectedEndpoints.size} endpoints`, 'success');
+    } catch (error) {
+      console.error('Export error:', error);
+      showStatus('Export failed', 'error');
+    }
+  });
+}
+
+if (recordCheckbox) {
+  recordCheckbox.addEventListener('change', (e) => {
+    safePostMessage({ type: "SET_RECORDING", recording: e.target.checked });
+    showStatus(e.target.checked ? 'Recording enabled' : 'Recording paused', 'info');
+  });
+}
+
+// Response bodies checkbox
+if (responseBodiesCheckbox) {
+  responseBodiesCheckbox.addEventListener('change', async (e) => {
+    const enabled = e.target.checked;
+    
+    if (enabled) {
+      // Get current tab ID
+      const tabId = chrome.devtools.inspectedWindow.tabId;
+      if (!safePostMessage({ type: "ENABLE_RESPONSE_BODIES", tabId })) {
+        showStatus('Failed to enable response body capture - disconnected', 'error');
+        e.target.checked = false;
+        return;
+      }
+      showStatus('Enabling response body capture...', 'info');
+    } else {
+      const tabId = chrome.devtools.inspectedWindow.tabId;
+      if (!safePostMessage({ type: "DISABLE_RESPONSE_BODIES", tabId })) {
+        showStatus('Failed to disable response body capture - disconnected', 'error');
+        return;
+      }
+      showStatus('Response body capture disabled', 'info');
+    }
+  });
+}
+
+if (selectAllBtn) {
+  selectAllBtn.addEventListener('click', () => {
+    const filteredEndpoints = getFilteredEndpoints();
+    filteredEndpoints.forEach(([endpoint]) => {
+      selectedEndpoints.add(endpoint);
+    });
+    updateEndpointsList();
+    updateSelectionInfo();
+    showStatus('All visible endpoints selected', 'info');
+  });
+}
+
+if (selectNoneBtn) {
+  selectNoneBtn.addEventListener('click', () => {
+    selectedEndpoints.clear();
+    updateEndpointsList();
+    updateSelectionInfo();
+    showStatus('Selection cleared', 'info');
+  });
+}
+
+if (askAiAllBtn) {
+  askAiAllBtn.addEventListener('click', () => {
+    if (selectedEndpoints.size === 0) {
+      showStatus('Please select at least one endpoint to analyze', 'error');
+      return;
+    }
+
+    const prompt = generateCombinedAiPrompt();
+    copyToClipboard(prompt).then(success => {
+      if (!success) {
+        showStatus('Failed to copy prompt to clipboard', 'error');
+        return;
+      }
+      
+      // Save original state
+      const originalHTML = '<span class="ai-icon">✨</span> ASK AI';
+      
+      // Change to success state
+      askAiAllBtn.textContent = 'Prompt Copied!';
+      askAiAllBtn.style.background = '#10b981'; // Success green
+      askAiAllBtn.style.animation = 'none'; // Stop animation temporarily
+      
+      // Revert after 2 seconds
+      setTimeout(() => {
+        askAiAllBtn.innerHTML = originalHTML;
+        askAiAllBtn.style.background = ''; // Revert to CSS gradient
+        askAiAllBtn.style.animation = ''; // Restore animation
+      }, 2000);
+    });
+  });
+}
+
+if (excelReportBtn) {
+  excelReportBtn.addEventListener('click', () => {
     if (selectedEndpoints.size === 0) {
       showStatus('Please select at least one endpoint to export', 'error');
       return;
     }
     
-    const openApiSpec = generateOpenApiSpec(true); // Pass true to filter by selection
-    
-    const blob = new Blob([JSON.stringify(openApiSpec, null, 2)], 
-      { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `openapi-spec-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    showStatus(`Exported ${selectedEndpoints.size} endpoints`, 'success');
-  } catch (error) {
-    console.error('Export error:', error);
-    showStatus('Export failed', 'error');
-  }
-});
-
-recordCheckbox.addEventListener('change', (e) => {
-  safePostMessage({ type: "SET_RECORDING", recording: e.target.checked });
-  showStatus(e.target.checked ? 'Recording enabled' : 'Recording paused', 'info');
-});
-
-// Response bodies checkbox
-responseBodiesCheckbox.addEventListener('change', async (e) => {
-  const enabled = e.target.checked;
-  
-  if (enabled) {
-    // Get current tab ID
-    const tabId = chrome.devtools.inspectedWindow.tabId;
-    if (!safePostMessage({ type: "ENABLE_RESPONSE_BODIES", tabId })) {
-      showStatus('Failed to enable response body capture - disconnected', 'error');
-      e.target.checked = false;
-      return;
-    }
-    showStatus('Enabling response body capture...', 'info');
-  } else {
-    const tabId = chrome.devtools.inspectedWindow.tabId;
-    if (!safePostMessage({ type: "DISABLE_RESPONSE_BODIES", tabId })) {
-      showStatus('Failed to disable response body capture - disconnected', 'error');
-      return;
-    }
-    showStatus('Response body capture disabled', 'info');
-  }
-});
-
-selectAllBtn.addEventListener('click', () => {
-  const filteredEndpoints = getFilteredEndpoints();
-  filteredEndpoints.forEach(([endpoint]) => {
-    selectedEndpoints.add(endpoint);
+    generateExcelReport();
   });
-  updateEndpointsList();
-  updateSelectionInfo();
-  showStatus('All visible endpoints selected', 'info');
-});
-
-selectNoneBtn.addEventListener('click', () => {
-  selectedEndpoints.clear();
-  updateEndpointsList();
-  updateSelectionInfo();
-  showStatus('Selection cleared', 'info');
-});
-
-askAiAllBtn.addEventListener('click', () => {
-  if (selectedEndpoints.size === 0) {
-    showStatus('Please select at least one endpoint to analyze', 'error');
-    return;
-  }
-
-  const prompt = generateCombinedAiPrompt();
-  navigator.clipboard.writeText(prompt).then(() => {
-    // Save original state
-    const originalHTML = '<span class="ai-icon">✨</span> ASK AI';
-    
-    // Change to success state
-    askAiAllBtn.textContent = 'Prompt Copied!';
-    askAiAllBtn.style.background = '#10b981'; // Success green
-    askAiAllBtn.style.animation = 'none'; // Stop animation temporarily
-    
-    // Revert after 2 seconds
-    setTimeout(() => {
-      askAiAllBtn.innerHTML = originalHTML;
-      askAiAllBtn.style.background = ''; // Revert to CSS gradient
-      askAiAllBtn.style.animation = ''; // Restore animation
-    }, 2000);
-  }).catch(err => {
-    console.error('Failed to copy text: ', err);
-    showStatus('Failed to copy prompt to clipboard', 'error');
-  });
-});
-
-excelReportBtn.addEventListener('click', () => {
-  if (selectedEndpoints.size === 0) {
-    showStatus('Please select at least one endpoint to export', 'error');
-    return;
-  }
-  
-  generateExcelReport();
-});
+}
 
 /**
  * Generate and download Excel (CSV) report
@@ -1414,7 +1500,7 @@ function addFilterControls() {
   // Search input
   const searchInput = createElement('input', 'search-input', '', {
     type: 'text',
-  placeholder: 'Filter (e.g., method:GET host:api.example.com status:2xx -tag:internal /(aac|mga)/)',
+  placeholder: 'Filter (e.g., method:GET host:api.example.com status:2xx -tag:internal regex:(aac|mga))',
     id: 'search-input'
   });
   
@@ -1430,9 +1516,9 @@ function addFilterControls() {
   function computePartnerRegex() {
     const dc = dcFilterCheckbox?.checked;
     const gamx = gamxFilterCheckbox?.checked;
-    if (dc && gamx) return '/(aac|mga|sys-gam-digital)/';
-    if (dc) return '/(aac|mga)/';
-    if (gamx) return '/(sys-gam-digital)/';
+    if (dc && gamx) return 'regex:(aac|mga|sys-gam-digital)';
+    if (dc) return 'regex:(aac|mga)';
+    if (gamx) return 'regex:(sys-gam-digital)';
     return '';
   }
 
@@ -1461,9 +1547,9 @@ function addFilterControls() {
   // Reflect the current filter text back into the DC/GAMX checkboxes
   function syncCheckboxesFromFilter() {
     const terms = (searchInput.value || '').trim().split(/\s+/).filter(Boolean);
-    const combinedRe = /^\/\((?:aac\|mga\|sys-gam-digital)\)\/$/i;
-    const dcOnlyRe = /^\/\((?:aac\|mga)\)\/$/i;
-    const gamxOnlyRe = /^\/\((?:sys-gam-digital)\)\/$/i;
+    const combinedRe = /^regex:\((?:aac\|mga\|sys-gam-digital)\)$/i;
+    const dcOnlyRe = /^regex:\((?:aac\|mga)\)$/i;
+    const gamxOnlyRe = /^regex:\((?:sys-gam-digital)\)$/i;
 
     const hasCombined = terms.some(t => combinedRe.test(t));
     if (hasCombined) {
@@ -2599,10 +2685,13 @@ function createSecurityIssuesSection(data) {
     const issuesText = formatSecurityIssuesForCopy(data.securityIssues);
     copyBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      navigator.clipboard.writeText(issuesText);
-      const original = copyBtn.innerHTML;
-      copyBtn.textContent = '✓';
-      setTimeout(() => copyBtn.innerHTML = original, 1500);
+      copyToClipboard(issuesText).then(success => {
+        if (success) {
+          const original = copyBtn.innerHTML;
+          copyBtn.textContent = '✓';
+          setTimeout(() => copyBtn.innerHTML = original, 1500);
+        }
+      });
     });
   } else {
     copyBtn.style.display = 'none';
@@ -2693,7 +2782,12 @@ function createSecurityIssuesSection(data) {
           e.stopPropagation();
           
           const prompt = generateAiPrompt(issue, data);
-          navigator.clipboard.writeText(prompt).then(() => {
+          copyToClipboard(prompt).then(success => {
+            if (!success) {
+              alert('Failed to copy prompt to clipboard');
+              return;
+            }
+            
             // Save original state
             const originalHTML = '<span class="ai-icon">✨</span> ASK AI';
             
@@ -2708,9 +2802,6 @@ function createSecurityIssuesSection(data) {
               askAiBtn.style.background = ''; // Revert to CSS gradient
               askAiBtn.style.animation = ''; // Restore animation
             }, 2000);
-          }).catch(err => {
-            console.error('Failed to copy text: ', err);
-            alert('Failed to copy prompt to clipboard');
           });
         });
         
@@ -2735,19 +2826,21 @@ function createSecurityIssuesSection(data) {
           
           if (call) {
             const curl = generateCurlCommand(call);
-            navigator.clipboard.writeText(curl).then(() => {
-              const originalText = 'Copy cURL';
-              copyCurlBtn.textContent = 'Copied!';
-              copyCurlBtn.style.background = '#10b981';
-              copyCurlBtn.style.color = 'white';
-              copyCurlBtn.style.borderColor = '#10b981';
-              
-              setTimeout(() => {
-                copyCurlBtn.textContent = originalText;
-                copyCurlBtn.style.background = '';
-                copyCurlBtn.style.color = '';
-                copyCurlBtn.style.borderColor = '';
-              }, 2000);
+            copyToClipboard(curl).then(success => {
+              if (success) {
+                const originalText = 'Copy cURL';
+                copyCurlBtn.textContent = 'Copied!';
+                copyCurlBtn.style.background = '#10b981';
+                copyCurlBtn.style.color = 'white';
+                copyCurlBtn.style.borderColor = '#10b981';
+                
+                setTimeout(() => {
+                  copyCurlBtn.textContent = originalText;
+                  copyCurlBtn.style.background = '';
+                  copyCurlBtn.style.color = '';
+                  copyCurlBtn.style.borderColor = '';
+                }, 2000);
+              }
             });
           } else {
             alert('Could not find request details to generate cURL');
@@ -2995,5 +3088,3 @@ function initSecurityUI() {
 
 // Initialize security UI
 initSecurityUI();
-
-
