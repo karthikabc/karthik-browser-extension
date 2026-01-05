@@ -305,7 +305,8 @@
         "aws_key": "(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}",
         "github_token": "ghp_[A-Za-z0-9]{36}",
         "slack_token": "xox[baprs]-[0-9]{10,12}-[0-9]{10,12}-[A-Za-z0-9]{24,32}",
-        "generic_api_key": "['\"][a-zA-Z0-9]{32,}['\"]"
+        "google_api_key": "AIza[0-9A-Za-z\\-_]{35}",
+        "stripe_key": "sk_live_[0-9a-zA-Z]{24}"
       }
     },
     "open-redirect": {
@@ -384,7 +385,7 @@
     },
     "idor-in-path": {
       "enabled": true,
-      "severity": "high",
+      "severity": "medium",
       "name": "IDOR - Sequential ID in Path (CWE-639)",
       "description": "Detects sequential numeric IDs in URL paths that could be enumerated for unauthorized access",
       "pathPatterns": [
@@ -521,24 +522,23 @@
       "message": "Access to potentially sensitive file detected"
     },
     "authorization-header-exposure": {
-      "enabled": true,
+      "enabled": false,
       "severity": "info",
       "name": "Authorization Header Captured",
-      "description": "Authorization headers are being captured - informational for auditing",
+      "description": "Authorization headers are being captured (disabled - too noisy for normal authenticated apps)",
       "message": "Authorization token captured - verify server does not log auth headers for compliance"
     },
     "ssti-risk": {
-      "enabled": true,
+      "enabled": false,
       "severity": "critical",
       "name": "Server-Side Template Injection Risk",
-      "description": "Detects template expression patterns that could enable SSTI attacks",
+      "description": "Detects template expression patterns (disabled - high false positive rate with frontend frameworks)",
       "patterns": [
-        "\\{\\{.*\\}\\}",
-        "\\$\\{.*\\}",
-        "<%.*%>",
-        "#\\{.*\\}",
-        "\\{%.*%\\}",
-        "@\\(.*\\)"
+        "\\{\\{7\\*7\\}\\}",
+        "\\$\\{7\\*7\\}",
+        "<%=.*%>",
+        "\\{\\{constructor\\}",
+        "\\{\\{config\\}"
       ],
       "message": "Template expression in request - potential SSTI vulnerability"
     },
@@ -582,17 +582,17 @@
       "message": "GraphQL introspection query detected - should be disabled in production"
     },
     "api-version-bypass": {
-      "enabled": true,
+      "enabled": false,
       "severity": "medium",
       "name": "API Version Bypass Attempt",
-      "description": "Detects requests to deprecated or alternative API versions",
+      "description": "Detects requests to deprecated or alternative API versions (disabled - too noisy for v1/v2 APIs)",
       "patterns": [
-        "/v1/",
         "/api/v0/",
-        "/api/v1/",
         "/api/old/",
         "/api/legacy/",
-        "/api/deprecated/"
+        "/api/deprecated/",
+        "/api/beta/",
+        "/api/alpha/"
       ],
       "message": "Request to alternative API version - older versions may lack security controls"
     },
@@ -667,11 +667,157 @@
         "session"
       ],
       "message": "Sensitive parameter name detected - ensure value is properly protected"
+    },
+    "prototype-pollution": {
+      "enabled": true,
+      "severity": "high",
+      "name": "Prototype Pollution Risk",
+      "description": "Detects attempts to pollute Object prototype",
+      "patterns": [
+        "__proto__",
+        "constructor.prototype",
+        "Object.prototype"
+      ],
+      "message": "Potential prototype pollution vector detected"
+    },
+    "unsafe-csp": {
+      "enabled": true,
+      "severity": "medium",
+      "name": "Unsafe Content Security Policy",
+      "description": "Detects unsafe CSP directives",
+      "patterns": [
+        "'unsafe-inline'",
+        "'unsafe-eval'",
+        "blob:"
+      ],
+      "message": "Content Security Policy contains unsafe directives"
+    },
+    "cache-poisoning-risk": {
+      "enabled": true,
+      "severity": "high",
+      "name": "Cache Poisoning Risk",
+      "description": "Detects headers that could enable web cache poisoning",
+      "headers": [
+        "X-Forwarded-Host",
+        "X-Forwarded-Scheme",
+        "X-Original-URL",
+        "X-Rewrite-URL"
+      ],
+      "message": "Request contains cache-key unkeyed headers - potential cache poisoning"
+    },
+    "business-logic-bypass": {
+      "enabled": true,
+      "severity": "medium",
+      "name": "Business Logic Bypass Indicators",
+      "description": "Detects parameters that may indicate business logic bypass attempts",
+      "patterns": [
+        "price=0",
+        "amount=0",
+        "discount=100",
+        "quantity=-",
+        "total=0",
+        "free=true",
+        "skip_validation",
+        "bypass"
+      ],
+      "message": "Request may be attempting to bypass business logic controls"
+    },
+    "missing-rate-limit-headers": {
+      "enabled": true,
+      "severity": "low",
+      "name": "Missing Rate Limit Headers",
+      "description": "Detects responses without rate limiting headers on sensitive endpoints",
+      "sensitiveEndpoints": [
+        "/login",
+        "/auth",
+        "/register",
+        "/forgot-password",
+        "/reset-password",
+        "/otp",
+        "/verify"
+      ],
+      "headers": [
+        "X-RateLimit-Limit",
+        "X-RateLimit-Remaining",
+        "RateLimit-Limit",
+        "Retry-After"
+      ],
+      "message": "Sensitive endpoint lacks rate limiting headers - may be vulnerable to brute force"
+    },
+    "file-upload-risk": {
+      "enabled": true,
+      "severity": "high",
+      "name": "File Upload Risk",
+      "description": "Detects file upload endpoints that may lack validation",
+      "pathPatterns": [
+        "/upload",
+        "/import",
+        "/file",
+        "/attach",
+        "/media"
+      ],
+      "dangerousExtensions": [
+        ".php",
+        ".jsp",
+        ".asp",
+        ".aspx",
+        ".exe",
+        ".sh",
+        ".bat",
+        ".svg",
+        ".html"
+      ],
+      "message": "File upload detected - verify server validates file type and content"
+    },
+    "subdomain-takeover-risk": {
+      "enabled": true,
+      "severity": "high",
+      "name": "Subdomain Takeover Risk",
+      "description": "Detects responses indicating potential subdomain takeover",
+      "patterns": [
+        "There isn't a GitHub Pages site here",
+        "Heroku | No such app",
+        "NoSuchBucket",
+        "No Such Account",
+        "You're Almost There",
+        "The request could not be satisfied",
+        "NXDOMAIN"
+      ],
+      "message": "Response indicates potential subdomain takeover vulnerability"
+    },
+    "email-header-injection": {
+      "enabled": true,
+      "severity": "high",
+      "name": "Email Header Injection Risk",
+      "description": "Detects patterns that could enable email header injection",
+      "patterns": [
+        "\\r\\nBcc:",
+        "\\r\\nCc:",
+        "\\r\\nTo:",
+        "%0ABcc:",
+        "%0ACc:",
+        "%0ATo:"
+      ],
+      "message": "Email header injection pattern detected in request"
+    },
+    "xpath-injection-risk": {
+      "enabled": true,
+      "severity": "critical",
+      "name": "XPath Injection Risk",
+      "description": "Detects potential XPath injection patterns",
+      "patterns": [
+        "' or '1'='1",
+        "' or ''='",
+        "]/parent::",
+        "ancestor::",
+        "descendant::"
+      ],
+      "message": "Potential XPath injection pattern detected"
     }
   },
   "metadata": {
-    "version": "1.0.0",
-    "lastUpdated": "2025-10-18",
-    "description": "Customizable security vulnerability detection rules for GAMX Chrome & Edge Extension"
+    "version": "1.1.0",
+    "lastUpdated": "2026-01-04",
+    "description": "Customizable security vulnerability detection rules for GAMX Firefox Extension"
   }
 }

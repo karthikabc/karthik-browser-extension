@@ -133,7 +133,16 @@ class SecurityAnalyzer {
       'race-condition-risk': this.checkRaceConditionRisk,
       'ldap-injection-risk': this.checkLdapInjectionRisk,
       'nosql-injection-risk': this.checkNoSqlInjectionRisk,
-      'sensitive-param-names': this.checkSensitiveParamNames
+      'sensitive-param-names': this.checkSensitiveParamNames,
+      'prototype-pollution': this.checkPrototypePollution,
+      'unsafe-csp': this.checkUnsafeCsp,
+      'cache-poisoning-risk': this.checkCachePoisoningRisk,
+      'business-logic-bypass': this.checkBusinessLogicBypass,
+      'missing-rate-limit-headers': this.checkMissingRateLimitHeaders,
+      'file-upload-risk': this.checkFileUploadRisk,
+      'subdomain-takeover-risk': this.checkSubdomainTakeoverRisk,
+      'email-header-injection': this.checkEmailHeaderInjection,
+      'xpath-injection-risk': this.checkXPathInjectionRisk
     };
 
     return checkers[ruleId];
@@ -1803,6 +1812,282 @@ class SecurityAnalyzer {
     });
 
     return summary;
+  }
+
+  /**
+   * Check for prototype pollution attempts
+   */
+  checkPrototypePollution(context) {
+    const issues = [];
+    const rule = this.rules['prototype-pollution'];
+    const requestBody = JSON.stringify(context.requestBody || {});
+    const queryParams = JSON.stringify(context.queryParams || {});
+    
+    const textToCheck = requestBody + queryParams;
+
+    rule.patterns.forEach(pattern => {
+      if (textToCheck.includes(pattern)) {
+        issues.push({
+          message: rule.message,
+          details: { 
+            pattern,
+            recommendation: 'Validate and sanitize input keys to prevent prototype pollution'
+          },
+          location: 'body/query'
+        });
+      }
+    });
+
+    return issues;
+  }
+
+  /**
+   * Check for unsafe CSP
+   */
+  checkUnsafeCsp(context) {
+    const issues = [];
+    const rule = this.rules['unsafe-csp'];
+    const responseHeaders = (context.callDetails && context.callDetails.responseHeaders) || {};
+    
+    // Find CSP header (case-insensitive)
+    const cspHeaderName = Object.keys(responseHeaders).find(h => 
+      h.toLowerCase() === 'content-security-policy' || 
+      h.toLowerCase() === 'x-content-security-policy'
+    );
+
+    if (cspHeaderName) {
+      const csp = responseHeaders[cspHeaderName];
+      rule.patterns.forEach(pattern => {
+        if (csp.includes(pattern)) {
+          issues.push({
+            message: `${rule.message}: ${pattern}`,
+            details: { 
+              directive: pattern,
+              fullCsp: csp
+            },
+            location: 'response-headers'
+          });
+        }
+      });
+    }
+
+    return issues;
+  }
+
+  /**
+   * Check for cache poisoning risk headers
+   */
+  checkCachePoisoningRisk(context) {
+    const issues = [];
+    const rule = this.rules['cache-poisoning-risk'];
+    if (!rule) return issues;
+    
+    const headers = context.headers;
+    
+    rule.headers.forEach(headerName => {
+      const value = headers[headerName] || headers[headerName.toLowerCase()];
+      if (value) {
+        issues.push({
+          message: rule.message,
+          details: { 
+            header: headerName,
+            value: value,
+            recommendation: 'Ensure cache keys include these headers or strip them'
+          },
+          location: 'headers'
+        });
+      }
+    });
+
+    return issues;
+  }
+
+  /**
+   * Check for business logic bypass attempts
+   */
+  checkBusinessLogicBypass(context) {
+    const issues = [];
+    const rule = this.rules['business-logic-bypass'];
+    if (!rule) return issues;
+    
+    const fullUrl = context.url;
+    const requestBody = JSON.stringify(context.requestBody || {});
+    const textToCheck = fullUrl + requestBody;
+
+    rule.patterns.forEach(pattern => {
+      if (textToCheck.toLowerCase().includes(pattern.toLowerCase())) {
+        issues.push({
+          message: rule.message,
+          details: { 
+            pattern,
+            recommendation: 'Verify server-side validation for business logic'
+          },
+          location: 'request'
+        });
+      }
+    });
+
+    return issues;
+  }
+
+  /**
+   * Check for missing rate limit headers on sensitive endpoints
+   */
+  checkMissingRateLimitHeaders(context) {
+    const issues = [];
+    const rule = this.rules['missing-rate-limit-headers'];
+    if (!rule) return issues;
+    
+    const urlPath = new URL(context.url).pathname.toLowerCase();
+    const responseHeaders = (context.callDetails && context.callDetails.responseHeaders) || {};
+    
+    const isSensitive = rule.sensitiveEndpoints.some(endpoint => 
+      urlPath.includes(endpoint.toLowerCase())
+    );
+
+    if (isSensitive) {
+      const hasRateLimitHeader = rule.headers.some(header => 
+        responseHeaders[header] || responseHeaders[header.toLowerCase()]
+      );
+
+      if (!hasRateLimitHeader) {
+        issues.push({
+          message: rule.message,
+          details: { 
+            endpoint: urlPath,
+            recommendation: 'Implement rate limiting with proper response headers'
+          },
+          location: 'response-headers'
+        });
+      }
+    }
+
+    return issues;
+  }
+
+  /**
+   * Check for file upload risks
+   */
+  checkFileUploadRisk(context) {
+    const issues = [];
+    const rule = this.rules['file-upload-risk'];
+    if (!rule) return issues;
+    
+    const urlPath = new URL(context.url).pathname.toLowerCase();
+    const method = context.method || 'GET';
+    
+    if (method.toUpperCase() !== 'POST' && method.toUpperCase() !== 'PUT') {
+      return issues;
+    }
+
+    const isUploadEndpoint = rule.pathPatterns.some(pattern => 
+      urlPath.includes(pattern.toLowerCase())
+    );
+
+    if (isUploadEndpoint) {
+      issues.push({
+        message: rule.message,
+        details: { 
+          endpoint: urlPath,
+          dangerousExtensions: rule.dangerousExtensions,
+          recommendation: 'Validate file type, size, and content. Store outside web root.'
+        },
+        location: 'path'
+      });
+    }
+
+    return issues;
+  }
+
+  /**
+   * Check for subdomain takeover indicators
+   */
+  checkSubdomainTakeoverRisk(context) {
+    const issues = [];
+    const rule = this.rules['subdomain-takeover-risk'];
+    if (!rule) return issues;
+    
+    const body = context.callDetails && context.callDetails.responseBody;
+    if (!body || typeof body !== 'string') return issues;
+
+    rule.patterns.forEach(pattern => {
+      if (body.includes(pattern)) {
+        issues.push({
+          message: rule.message,
+          details: { 
+            indicator: pattern,
+            recommendation: 'Check DNS configuration and cloud service setup'
+          },
+          location: 'response-body'
+        });
+      }
+    });
+
+    return issues;
+  }
+
+  /**
+   * Check for email header injection
+   */
+  checkEmailHeaderInjection(context) {
+    const issues = [];
+    const rule = this.rules['email-header-injection'];
+    if (!rule) return issues;
+    
+    const valuesToCheck = [
+      ...Object.values(context.queryParams),
+      ...this.getDeepValues(context.requestBody)
+    ];
+
+    valuesToCheck.forEach(value => {
+      if (typeof value === 'string') {
+        rule.patterns.forEach(pattern => {
+          const regex = new RegExp(pattern, 'i');
+          if (regex.test(value)) {
+            issues.push({
+              message: rule.message,
+              details: { pattern },
+              location: 'parameters'
+            });
+          }
+        });
+      }
+    });
+
+    return issues;
+  }
+
+  /**
+   * Check for XPath injection
+   */
+  checkXPathInjectionRisk(context) {
+    const issues = [];
+    const rule = this.rules['xpath-injection-risk'];
+    if (!rule) return issues;
+    
+    const valuesToCheck = [
+      ...Object.values(context.queryParams),
+      ...this.getDeepValues(context.requestBody)
+    ];
+
+    valuesToCheck.forEach(value => {
+      if (typeof value === 'string') {
+        rule.patterns.forEach(pattern => {
+          if (value.toLowerCase().includes(pattern.toLowerCase())) {
+            issues.push({
+              message: rule.message,
+              details: { 
+                pattern,
+                sample: value.substring(0, 50)
+              },
+              location: 'parameters'
+            });
+          }
+        });
+      }
+    });
+
+    return issues;
   }
 }
 
