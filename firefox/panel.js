@@ -3,7 +3,7 @@ let selectedEndpoint = null;
 let selectedEndpoints = new Set(); // Track which endpoints are selected for export
 let endpointTags = new Map(); // Track tags for each endpoint
 let allTags = new Set(); // Track all unique tags
-let filterText = '';
+let filterText = 'regex:(aac|mga|sys-gam-digital)';
 let filterMethods = new Set(); // Changed to Set for multiple selections
 let filterHosts = new Set(); // Changed to Set for multiple host selections
 let filterTags = new Set(); // Filter by tags
@@ -422,7 +422,7 @@ const updateEndpointsList = debounce(() => {
       // Deduplicate issues for count
       const uniqueIssuesMap = new Map();
       data.securityIssues.forEach(issue => {
-        const key = `${issue.severity}:${issue.rule}:${issue.message || ''}`;
+        const key = `${issue.ruleId}-${issue.location}`;
         if (!uniqueIssuesMap.has(key)) {
           uniqueIssuesMap.set(key, issue);
         }
@@ -1106,7 +1106,7 @@ browser.runtime.onMessage.addListener((msg) => {
 function updateSelectionInfo() {
   const count = selectedEndpoints.size;
   const total = apiData.size;
-  selectionInfo.textContent = `${count} of ${total} selected`;
+  selectionInfo.textContent = '';
 }
 
 // Tag management functions
@@ -1394,7 +1394,16 @@ function generateExcelReport() {
         const tags = endpointTags.get(endpoint);
         const userNotes = tags ? Array.from(tags).join('; ') : '';
 
+        // Deduplicate issues
+        const uniqueIssues = new Map();
         data.securityIssues.forEach(issue => {
+          const key = `${issue.ruleId}-${issue.location}`;
+          if (!uniqueIssues.has(key)) {
+            uniqueIssues.set(key, issue);
+          }
+        });
+
+        uniqueIssues.forEach(issue => {
           issueCount++;
           
           // Format details as a single string
@@ -1451,7 +1460,8 @@ function addFilterControls() {
   // Search input
   const searchInput = createElement('input', 'search-input', '', {
     type: 'text',
-  placeholder: 'Filter (e.g., method:GET host:api.example.com status:2xx -tag:internal regex:(aac|mga))',
+    value: filterText,
+    placeholder: 'Filter (e.g., method:GET host:api.example.com status:2xx -tag:internal regex:(aac|mga))',
     id: 'search-input'
   });
   
@@ -2412,8 +2422,8 @@ function updateSecuritySummary() {
       // Deduplicate issues for this endpoint
       const uniqueIssues = new Map();
       data.securityIssues.forEach(issue => {
-        // Create unique key from issue name and details
-        const key = `${issue.severity}:${issue.rule}:${issue.message || ''}`;
+        // Create unique key from ruleId and location to match detailed view
+        const key = `${issue.ruleId}-${issue.location}`;
         if (!uniqueIssues.has(key)) {
           uniqueIssues.set(key, issue);
         }
@@ -2486,7 +2496,17 @@ function generateCombinedAiPrompt() {
     const data = apiData.get(endpoint);
     if (data && data.securityIssues && data.securityIssues.length > 0) {
       hasIssues = true;
+      
+      // Deduplicate issues
+      const uniqueIssues = new Map();
       data.securityIssues.forEach(issue => {
+        const key = `${issue.ruleId}-${issue.location}`;
+        if (!uniqueIssues.has(key)) {
+          uniqueIssues.set(key, issue);
+        }
+      });
+
+      uniqueIssues.forEach(issue => {
         const url = data.url || endpoint;
         const method = data.method || 'N/A';
         const severity = issue.severity || 'Unknown';
@@ -2662,7 +2682,7 @@ function createSecurityIssuesSection(data) {
   // Deduplicate issues first
   const uniqueIssuesMap = new Map();
   data.securityIssues.forEach(issue => {
-    const key = `${issue.severity}:${issue.rule}:${issue.message || ''}`;
+    const key = `${issue.ruleId}-${issue.location}`;
     if (!uniqueIssuesMap.has(key)) {
       uniqueIssuesMap.set(key, issue);
     }
@@ -2685,19 +2705,6 @@ function createSecurityIssuesSection(data) {
   // Display issues by severity
   Object.entries(groupedIssues).forEach(([severity, issues]) => {
     if (issues.length > 0) {
-      const severitySection = createElement('div', `security-severity-section ${severity}`);
-      
-      const severityHeader = createElement('div', 'security-severity-header');
-      const badge = createElement('span', `severity-badge ${severity}`, issues.length);
-      const title = createElement('span', 'security-severity-title', 
-        `${severity.toUpperCase()} Severity Issues`);
-      severityHeader.appendChild(badge);
-      severityHeader.appendChild(title);
-      severitySection.appendChild(severityHeader);
-
-      // List issues
-      const issuesList = createElement('div', 'security-issues-list');
-      
       // Group by rule to avoid duplicates
       const uniqueIssues = new Map();
       issues.forEach(issue => {
@@ -2706,6 +2713,19 @@ function createSecurityIssuesSection(data) {
           uniqueIssues.set(key, issue);
         }
       });
+
+      const severitySection = createElement('div', `security-severity-section ${severity}`);
+      
+      const severityHeader = createElement('div', 'security-severity-header');
+      const badge = createElement('span', `severity-badge ${severity}`, uniqueIssues.size);
+      const title = createElement('span', 'security-severity-title', 
+        `${severity.toUpperCase()} Severity Issues`);
+      severityHeader.appendChild(badge);
+      severityHeader.appendChild(title);
+      severitySection.appendChild(severityHeader);
+
+      // List issues
+      const issuesList = createElement('div', 'security-issues-list');
 
       uniqueIssues.forEach(issue => {
         const issueItem = createElement('div', 'security-issue-item');

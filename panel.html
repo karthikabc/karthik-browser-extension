@@ -29,11 +29,11 @@
         <div class="filter-group">
           <span class="filter-group-label">Filter only:</span>
           <label title="Filter for DC partner endpoints">
-            <input type="checkbox" id="dc-filter-checkbox">
+            <input type="checkbox" id="dc-filter-checkbox" checked>
             DC APIs
           </label>
           <label title="Filter for GAMX partner endpoints">
-            <input type="checkbox" id="gamx-filter-checkbox">
+            <input type="checkbox" id="gamx-filter-checkbox" checked>
             GAMX APIs
           </label>
         </div>
@@ -63,7 +63,7 @@
           <div class="selection-controls">
             <button id="select-all-btn" class="small-btn">Select All</button>
             <button id="select-none-btn" class="small-btn">Select None</button>
-            <span id="selection-info" class="selection-info">0 selected</span>
+            <span id="selection-info" class="selection-info" style="display: none;">0 selected</span>
           </div>
         </div>
         <div id="endpoints-list"></div>

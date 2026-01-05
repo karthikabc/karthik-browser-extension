@@ -1140,8 +1140,8 @@ body {
 }
 
 .empty-message::before {
-  content: '📭';
-  display: block;
+  content: '';
+  display: none;
   font-size: 3rem;
   margin-bottom: 1rem;
   opacity: 0.5;
