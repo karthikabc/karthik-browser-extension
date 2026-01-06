@@ -1010,11 +1010,16 @@ port.onMessage.addListener((msg) => {
       if (typeof msg.version === 'number') currentDataVersion = msg.version;
       isConnected = true;
       showStatus('Connected to GAMX Extension', 'success');
+      
+      // Register the tab this panel is inspecting
+      const tabId = chrome.devtools.inspectedWindow.tabId;
+      safePostMessage({ type: "REGISTER_TAB", tabId });
+      console.log('[GAMX Chrome Panel] Registered for tab:', tabId);
+      
       // Request initial data
       safePostMessage({ type: "GET_API_CALLS" });
       
       // Enable response bodies by default
-      const tabId = chrome.devtools.inspectedWindow.tabId;
       safePostMessage({ type: "ENABLE_RESPONSE_BODIES", tabId });
     } else if (msg.type === "API_CALLS_DATA") {
       console.log('[GAMX Chrome Panel] API_CALLS_DATA received, count:', msg.data?.length);

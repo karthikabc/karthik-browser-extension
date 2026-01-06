@@ -285,6 +285,17 @@ class SecurityAnalyzer {
     if (!rule || !rule.headers) return [];
 
     const call = context.callDetails || {};
+    
+    // CRITICAL: Only evaluate response headers after the response has been received.
+    // This check runs twice: once during onBeforeSendHeaders (request phase) and
+    // once during onCompleted (response phase). We must skip the request phase
+    // to avoid false positives when responseHeaders haven't been populated yet.
+    // We detect response phase by checking if status code is set (only set in onCompleted).
+    if (!call.status) {
+      // Request phase - response headers not available yet, skip this check
+      return [];
+    }
+    
     const responseHeaders = call.responseHeaders || {};
     // Normalize header names to lowercase for case-insensitive lookup
     const headersMap = new Map();
@@ -366,9 +377,31 @@ class SecurityAnalyzer {
         remediation: 'Configure on Server-side.'
       },
       'x-content-type-options': {
-        check: (value) => !value ? { status: 'missing' } : { status: 'compliant' },
+        check: (value) => {
+          // Skip evaluation for redirect responses - evaluate only final response
+          if (isRedirect) return { status: 'not-applicable', reason: 'Redirect response' };
+          
+          // Header is missing
+          if (!value) return { status: 'missing' };
+          
+          // Normalize the value: trim whitespace and compare case-insensitively
+          // This handles HTTP/1.1, HTTP/2, HTTP/3 and gzip encoding variations
+          const normalizedValue = value.trim().toLowerCase();
+          
+          // The only valid value for x-content-type-options is "nosniff"
+          if (normalizedValue === 'nosniff') {
+            return { status: 'compliant' };
+          }
+          
+          // Header present but with invalid value
+          return { 
+            status: 'weak', 
+            message: `Invalid value "${value}" - must be "nosniff"`,
+            details: { currentValue: value, expectedValue: 'nosniff' }
+          };
+        },
         description: 'Prevents MIME type sniffing.',
-        remediation: 'Configure on Server-side.'
+        remediation: 'Configure on Server-side. Set header value to "nosniff".'
       },
       'referrer-policy': {
         check: (value) => !value ? { status: 'missing' } : { status: 'compliant' },
@@ -432,8 +465,15 @@ class SecurityAnalyzer {
                     });
                 }
             } else {
-                // For other headers, use the original logic
-                if (result.status === 'missing') {
+                // For other headers, use enhanced logic that handles all statuses
+                if (result.status === 'not-applicable') {
+                    // Do NOT create a finding for non-applicable cases
+                    // (e.g., redirects for x-content-type-options)
+                    return;
+                } else if (result.status === 'compliant') {
+                    // Header exists with valid value. No finding needed.
+                    return;
+                } else if (result.status === 'missing') {
                     issues.push({
                         message: `Missing security header: ${headerName}`,
                         details: {

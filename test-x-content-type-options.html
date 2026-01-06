@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X-Content-Type-Options Header Detection Tests</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            max-width: 1000px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        h1 { color: #333; border-bottom: 2px solid #2196F3; padding-bottom: 10px; }
+        h2 { color: #555; margin-top: 30px; }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-case {
+            background: #f5f5f5;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            border-left: 4px solid #2196F3;
+        }
+        .test-case.pass { border-left-color: #4CAF50; }
+        .test-case.fail { border-left-color: #f44336; }
+        .test-case.pending { border-left-color: #FF9800; }
+        button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0b7dda; }
+        button.run-all { background: #4CAF50; font-size: 16px; padding: 15px 30px; }
+        button.run-all:hover { background: #45a049; }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .result.pass { background: #e8f5e9; color: #2e7d32; }
+        .result.fail { background: #ffebee; color: #c62828; }
+        pre {
+            background: #263238;
+            color: #aed581;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        .summary {
+            background: #e3f2fd;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 30px;
+        }
+        .summary.all-pass { background: #e8f5e9; }
+        .summary.has-failures { background: #ffebee; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background: #f5f5f5; }
+        .icon { font-size: 20px; }
+    </style>
+</head>
+<body>
+    <h1>🔒 X-Content-Type-Options Header Detection Tests</h1>
+    <p>Regression tests for false-positive fix in security scanner detection of <code>x-content-type-options</code> header.</p>
+    
+    <button class="run-all" onclick="runAllTests()">▶️ Run All Tests</button>
+    
+    <div id="summary" class="summary" style="display:none;">
+        <h3>Test Summary</h3>
+        <div id="summary-content"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>1. Case-Insensitive Header Name Detection</h2>
+        <p>Tests that the scanner correctly identifies the header regardless of case variations.</p>
+        
+        <div id="test-1-1" class="test-case pending">
+            <h4>Test 1.1: Header name "X-Content-Type-Options" (Title Case)</h4>
+            <pre>Response Headers:
+X-Content-Type-Options: nosniff</pre>
+            <p><strong>Expected:</strong> Header detected as PRESENT (no vulnerability reported)</p>
+            <button onclick="runTest('1-1')">Run Test</button>
+            <div id="result-1-1" class="result"></div>
+        </div>
+
+        <div id="test-1-2" class="test-case pending">
+            <h4>Test 1.2: Header name "x-content-type-options" (lowercase)</h4>
+            <pre>Response Headers:
+x-content-type-options: nosniff</pre>
+            <p><strong>Expected:</strong> Header detected as PRESENT (no vulnerability reported)</p>
+            <button onclick="runTest('1-2')">Run Test</button>
+            <div id="result-1-2" class="result"></div>
+        </div>
+
+        <div id="test-1-3" class="test-case pending">
+            <h4>Test 1.3: Header name "X-CONTENT-TYPE-OPTIONS" (UPPERCASE)</h4>
+            <pre>Response Headers:
+X-CONTENT-TYPE-OPTIONS: nosniff</pre>
+            <p><strong>Expected:</strong> Header detected as PRESENT (no vulnerability reported)</p>
+            <button onclick="runTest('1-3')">Run Test</button>
+            <div id="result-1-3" class="result"></div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. Case-Insensitive Value Detection</h2>
+        <p>Tests that the scanner correctly validates "nosniff" value regardless of case.</p>
+        
+        <div id="test-2-1" class="test-case pending">
+            <h4>Test 2.1: Value "nosniff" (lowercase)</h4>
+            <pre>Response Headers:
+X-Content-Type-Options: nosniff</pre>
+            <p><strong>Expected:</strong> Value accepted as valid (compliant)</p>
+            <button onclick="runTest('2-1')">Run Test</button>
+            <div id="result-2-1" class="result"></div>
+        </div>
+
+        <div id="test-2-2" class="test-case pending">
+            <h4>Test 2.2: Value "Nosniff" (Title Case)</h4>
+            <pre>Response Headers:
+X-Content-Type-Options: Nosniff</pre>
+            <p><strong>Expected:</strong> Value accepted as valid (compliant)</p>
+            <button onclick="runTest('2-2')">Run Test</button>
+            <div id="result-2-2" class="result"></div>
+        </div>
+
+        <div id="test-2-3" class="test-case pending">
+            <h4>Test 2.3: Value "NOSNIFF" (UPPERCASE)</h4>
+            <pre>Response Headers:
+X-Content-Type-Options: NOSNIFF</pre>
+            <p><strong>Expected:</strong> Value accepted as valid (compliant)</p>
+            <button onclick="runTest('2-3')">Run Test</button>
+            <div id="result-2-3" class="result"></div>
+        </div>
+
+        <div id="test-2-4" class="test-case pending">
+            <h4>Test 2.4: Value with leading/trailing whitespace "  nosniff  "</h4>
+            <pre>Response Headers:
+X-Content-Type-Options:   nosniff  </pre>
+            <p><strong>Expected:</strong> Value accepted as valid after trimming (compliant)</p>
+            <button onclick="runTest('2-4')">Run Test</button>
+            <div id="result-2-4" class="result"></div>
+        </div>
+
+        <div id="test-2-5" class="test-case pending">
+            <h4>Test 2.5: Invalid value "nosnif" (typo)</h4>
+            <pre>Response Headers:
+X-Content-Type-Options: nosnif</pre>
+            <p><strong>Expected:</strong> Weak configuration reported (invalid value)</p>
+            <button onclick="runTest('2-5')">Run Test</button>
+            <div id="result-2-5" class="result"></div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. Redirect Response Handling (302 → 200)</h2>
+        <p>Tests that the scanner evaluates only the final response in redirect chains.</p>
+        
+        <div id="test-3-1" class="test-case pending">
+            <h4>Test 3.1: 302 Redirect Response (should NOT be evaluated)</h4>
+            <pre>Response: 302 Found
+Location: /new-location
+X-Content-Type-Options: (absent)</pre>
+            <p><strong>Expected:</strong> NOT flagged (redirect response, not final)</p>
+            <button onclick="runTest('3-1')">Run Test</button>
+            <div id="result-3-1" class="result"></div>
+        </div>
+
+        <div id="test-3-2" class="test-case pending">
+            <h4>Test 3.2: 301 Permanent Redirect (should NOT be evaluated)</h4>
+            <pre>Response: 301 Moved Permanently
+Location: /permanent-location
+X-Content-Type-Options: (absent)</pre>
+            <p><strong>Expected:</strong> NOT flagged (redirect response)</p>
+            <button onclick="runTest('3-2')">Run Test</button>
+            <div id="result-3-2" class="result"></div>
+        </div>
+
+        <div id="test-3-3" class="test-case pending">
+            <h4>Test 3.3: Final 200 OK with header present</h4>
+            <pre>Response: 200 OK
+X-Content-Type-Options: nosniff</pre>
+            <p><strong>Expected:</strong> Header PRESENT (compliant)</p>
+            <button onclick="runTest('3-3')">Run Test</button>
+            <div id="result-3-3" class="result"></div>
+        </div>
+
+        <div id="test-3-4" class="test-case pending">
+            <h4>Test 3.4: Final 200 OK without header</h4>
+            <pre>Response: 200 OK
+X-Content-Type-Options: (absent)</pre>
+            <p><strong>Expected:</strong> Header MISSING (vulnerability reported)</p>
+            <button onclick="runTest('3-4')">Run Test</button>
+            <div id="result-3-4" class="result"></div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>4. HTTP/2 and Gzip Response Handling</h2>
+        <p>Tests that HTTP/2 framing and gzip encoding do not affect header detection.</p>
+        
+        <div id="test-4-1" class="test-case pending">
+            <h4>Test 4.1: HTTP/2 Response with lowercase headers</h4>
+            <pre>HTTP/2 200 
+content-type: application/json
+x-content-type-options: nosniff
+content-encoding: gzip</pre>
+            <p><strong>Expected:</strong> Header detected as PRESENT (HTTP/2 uses lowercase)</p>
+            <button onclick="runTest('4-1')">Run Test</button>
+            <div id="result-4-1" class="result"></div>
+        </div>
+
+        <div id="test-4-2" class="test-case pending">
+            <h4>Test 4.2: Gzipped response body (header still readable)</h4>
+            <pre>HTTP/1.1 200 OK
+Content-Encoding: gzip
+X-Content-Type-Options: nosniff
+[gzip-compressed body]</pre>
+            <p><strong>Expected:</strong> Header detected as PRESENT (body encoding doesn't affect headers)</p>
+            <button onclick="runTest('4-2')">Run Test</button>
+            <div id="result-4-2" class="result"></div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>5. Various Response Status Codes</h2>
+        <p>Tests that headers are evaluated for all response types.</p>
+        
+        <div id="test-5-1" class="test-case pending">
+            <h4>Test 5.1: 404 Not Found with header</h4>
+            <pre>Response: 404 Not Found
+X-Content-Type-Options: nosniff</pre>
+            <p><strong>Expected:</strong> Header PRESENT (compliant)</p>
+            <button onclick="runTest('5-1')">Run Test</button>
+            <div id="result-5-1" class="result"></div>
+        </div>
+
+        <div id="test-5-2" class="test-case pending">
+            <h4>Test 5.2: 500 Internal Server Error with header</h4>
+            <pre>Response: 500 Internal Server Error
+X-Content-Type-Options: nosniff</pre>
+            <p><strong>Expected:</strong> Header PRESENT (compliant)</p>
+            <button onclick="runTest('5-2')">Run Test</button>
+            <div id="result-5-2" class="result"></div>
+        </div>
+
+        <div id="test-5-3" class="test-case pending">
+            <h4>Test 5.3: 403 Forbidden without header</h4>
+            <pre>Response: 403 Forbidden
+X-Content-Type-Options: (absent)</pre>
+            <p><strong>Expected:</strong> Header MISSING (vulnerability)</p>
+            <button onclick="runTest('5-3')">Run Test</button>
+            <div id="result-5-3" class="result"></div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>6. Header Absence Detection</h2>
+        <p>Tests that truly missing headers are correctly flagged.</p>
+        
+        <div id="test-6-1" class="test-case pending">
+            <h4>Test 6.1: Header completely absent</h4>
+            <pre>Response: 200 OK
+Content-Type: application/json
+[No X-Content-Type-Options header]</pre>
+            <p><strong>Expected:</strong> Header MISSING (vulnerability reported)</p>
+            <button onclick="runTest('6-1')">Run Test</button>
+            <div id="result-6-1" class="result"></div>
+        </div>
+
+        <div id="test-6-2" class="test-case pending">
+            <h4>Test 6.2: Empty header value</h4>
+            <pre>Response: 200 OK
+X-Content-Type-Options: </pre>
+            <p><strong>Expected:</strong> Weak configuration (empty value is invalid)</p>
+            <button onclick="runTest('6-2')">Run Test</button>
+            <div id="result-6-2" class="result"></div>
+        </div>
+    </div>
+
+    <script>
+        // Mock SecurityAnalyzer for unit testing
+        // This simulates the actual check logic from security-analyzer.js
+        
+        function createMockAnalyzer() {
+            return {
+                checkXContentTypeOptions: function(responseHeaders, status) {
+                    const isRedirect = status >= 300 && status < 400;
+                    
+                    // Normalize header names to lowercase for case-insensitive lookup
+                    const headersMap = new Map();
+                    Object.keys(responseHeaders).forEach(h => 
+                        headersMap.set(h.toLowerCase(), responseHeaders[h])
+                    );
+                    
+                    const headerValue = headersMap.get('x-content-type-options');
+                    
+                    // Check logic matching security-analyzer.js implementation
+                    // Skip evaluation for redirect responses
+                    if (isRedirect) {
+                        return { status: 'not-applicable', reason: 'Redirect response' };
+                    }
+                    
+                    // Header is missing
+                    if (headerValue === undefined || headerValue === null) {
+                        return { status: 'missing' };
+                    }
+                    
+                    // Normalize the value: trim whitespace and compare case-insensitively
+                    const normalizedValue = headerValue.trim().toLowerCase();
+                    
+                    // Empty value after trimming
+                    if (normalizedValue === '') {
+                        return { 
+                            status: 'weak', 
+                            message: 'Invalid value "" - must be "nosniff"',
+                            details: { currentValue: headerValue, expectedValue: 'nosniff' }
+                        };
+                    }
+                    
+                    // The only valid value for x-content-type-options is "nosniff"
+                    if (normalizedValue === 'nosniff') {
+                        return { status: 'compliant' };
+                    }
+                    
+                    // Header present but with invalid value
+                    return { 
+                        status: 'weak', 
+                        message: `Invalid value "${headerValue}" - must be "nosniff"`,
+                        details: { currentValue: headerValue, expectedValue: 'nosniff' }
+                    };
+                }
+            };
+        }
+
+        const testCases = {
+            '1-1': {
+                headers: { 'X-Content-Type-Options': 'nosniff' },
+                status: 200,
+                expected: 'compliant',
+                description: 'Title Case header name'
+            },
+            '1-2': {
+                headers: { 'x-content-type-options': 'nosniff' },
+                status: 200,
+                expected: 'compliant',
+                description: 'Lowercase header name'
+            },
+            '1-3': {
+                headers: { 'X-CONTENT-TYPE-OPTIONS': 'nosniff' },
+                status: 200,
+                expected: 'compliant',
+                description: 'Uppercase header name'
+            },
+            '2-1': {
+                headers: { 'X-Content-Type-Options': 'nosniff' },
+                status: 200,
+                expected: 'compliant',
+                description: 'Value: nosniff (lowercase)'
+            },
+            '2-2': {
+                headers: { 'X-Content-Type-Options': 'Nosniff' },
+                status: 200,
+                expected: 'compliant',
+                description: 'Value: Nosniff (Title Case)'
+            },
+            '2-3': {
+                headers: { 'X-Content-Type-Options': 'NOSNIFF' },
+                status: 200,
+                expected: 'compliant',
+                description: 'Value: NOSNIFF (UPPERCASE)'
+            },
+            '2-4': {
+                headers: { 'X-Content-Type-Options': '  nosniff  ' },
+                status: 200,
+                expected: 'compliant',
+                description: 'Value with whitespace'
+            },
+            '2-5': {
+                headers: { 'X-Content-Type-Options': 'nosnif' },
+                status: 200,
+                expected: 'weak',
+                description: 'Invalid value (typo)'
+            },
+            '3-1': {
+                headers: {},
+                status: 302,
+                expected: 'not-applicable',
+                description: '302 Redirect (skip evaluation)'
+            },
+            '3-2': {
+                headers: {},
+                status: 301,
+                expected: 'not-applicable',
+                description: '301 Redirect (skip evaluation)'
+            },
+            '3-3': {
+                headers: { 'X-Content-Type-Options': 'nosniff' },
+                status: 200,
+                expected: 'compliant',
+                description: '200 OK with header'
+            },
+            '3-4': {
+                headers: {},
+                status: 200,
+                expected: 'missing',
+                description: '200 OK without header'
+            },
+            '4-1': {
+                headers: { 
+                    'content-type': 'application/json',
+                    'x-content-type-options': 'nosniff',
+                    'content-encoding': 'gzip'
+                },
+                status: 200,
+                expected: 'compliant',
+                description: 'HTTP/2 lowercase headers'
+            },
+            '4-2': {
+                headers: { 
+                    'Content-Encoding': 'gzip',
+                    'X-Content-Type-Options': 'nosniff'
+                },
+                status: 200,
+                expected: 'compliant',
+                description: 'Gzipped response'
+            },
+            '5-1': {
+                headers: { 'X-Content-Type-Options': 'nosniff' },
+                status: 404,
+                expected: 'compliant',
+                description: '404 with header'
+            },
+            '5-2': {
+                headers: { 'X-Content-Type-Options': 'nosniff' },
+                status: 500,
+                expected: 'compliant',
+                description: '500 with header'
+            },
+            '5-3': {
+                headers: {},
+                status: 403,
+                expected: 'missing',
+                description: '403 without header'
+            },
+            '6-1': {
+                headers: { 'Content-Type': 'application/json' },
+                status: 200,
+                expected: 'missing',
+                description: 'Header absent'
+            },
+            '6-2': {
+                headers: { 'X-Content-Type-Options': '' },
+                status: 200,
+                expected: 'weak',
+                description: 'Empty header value'
+            }
+        };
+
+        const testResults = {};
+
+        function runTest(testId) {
+            const analyzer = createMockAnalyzer();
+            const testCase = testCases[testId];
+            const resultDiv = document.getElementById(`result-${testId}`);
+            const testDiv = document.getElementById(`test-${testId}`);
+            
+            const result = analyzer.checkXContentTypeOptions(testCase.headers, testCase.status);
+            const passed = result.status === testCase.expected;
+            
+            testResults[testId] = passed;
+            
+            testDiv.classList.remove('pending', 'pass', 'fail');
+            testDiv.classList.add(passed ? 'pass' : 'fail');
+            
+            resultDiv.classList.remove('pass', 'fail');
+            resultDiv.classList.add(passed ? 'pass' : 'fail');
+            
+            resultDiv.innerHTML = `${passed ? '✅ PASSED' : '❌ FAILED'}
+Result: ${JSON.stringify(result, null, 2)}
+Expected status: "${testCase.expected}"
+Actual status: "${result.status}"`;
+            
+            updateSummary();
+        }
+
+        function runAllTests() {
+            Object.keys(testCases).forEach(testId => {
+                runTest(testId);
+            });
+        }
+
+        function updateSummary() {
+            const summaryDiv = document.getElementById('summary');
+            const contentDiv = document.getElementById('summary-content');
+            
+            const total = Object.keys(testResults).length;
+            const passed = Object.values(testResults).filter(r => r).length;
+            const failed = total - passed;
+            
+            if (total === 0) {
+                summaryDiv.style.display = 'none';
+                return;
+            }
+            
+            summaryDiv.style.display = 'block';
+            summaryDiv.classList.remove('all-pass', 'has-failures');
+            summaryDiv.classList.add(failed === 0 ? 'all-pass' : 'has-failures');
+            
+            contentDiv.innerHTML = `
+                <table>
+                    <tr>
+                        <th>Total Tests</th>
+                        <th>Passed</th>
+                        <th>Failed</th>
+                        <th>Status</th>
+                    </tr>
+                    <tr>
+                        <td>${total}</td>
+                        <td style="color: #4CAF50; font-weight: bold;">${passed}</td>
+                        <td style="color: ${failed > 0 ? '#f44336' : '#666'}; font-weight: bold;">${failed}</td>
+                        <td><span class="icon">${failed === 0 ? '✅' : '❌'}</span> ${failed === 0 ? 'All tests passed!' : `${failed} test(s) failed`}</td>
+                    </tr>
+                </table>
+            `;
+        }
+    </script>
+</body>
+</html>

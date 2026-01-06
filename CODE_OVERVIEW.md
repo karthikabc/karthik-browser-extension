@@ -71,10 +71,6 @@ You will notice a `firefox/` folder.
     *   Right-click inside the panel and choose "Inspect" to debug the UI (`panel.js`).
     *   Go to the Extensions page and click "Inspect views: service worker" to debug `background.js`.
 
-## 7. Common Tasks for Juniors
+`.
 
-*   **Adding a new security rule:** See the `security-analyzer.js` section above.
-*   **Fixing a UI bug:** Check `panel.js` and `panel.html`.
-*   **Updating permissions:** Check `manifest.json`.
 
-Happy Coding!

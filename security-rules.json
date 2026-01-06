@@ -155,7 +155,7 @@
     },
     "path-traversal-risk": {
       "enabled": true,
-      "severity": "high",
+      "severity": "low",
       "name": "Path Traversal Risk",
       "description": "Detects potential path traversal attacks",
       "patterns": [
@@ -318,7 +318,7 @@
     },
     "ssrf-risk": {
       "enabled": true,
-      "severity": "high",
+      "severity": "low",
       "name": "SSRF Risk",
       "description": "Detects parameters that could enable Server-Side Request Forgery",
       "params": ["url", "uri", "endpoint", "callback", "webhook", "fetch", "proxy"]

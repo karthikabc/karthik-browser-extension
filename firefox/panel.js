@@ -992,6 +992,12 @@ port.onMessage.addListener((msg) => {
       if (typeof msg.version === 'number') currentDataVersion = msg.version;
       isConnected = true;
       showStatus('Connected to GAMX Extension', 'success');
+      
+      // Register the tab this panel is inspecting
+      const tabId = browser.devtools.inspectedWindow.tabId;
+      safePostMessage({ type: "REGISTER_TAB", tabId });
+      console.log('[GAMX Firefox Panel] Registered for tab:', tabId);
+      
       // Request initial data
       safePostMessage({ type: "GET_API_CALLS" });
       // Check response bodies status

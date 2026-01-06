@@ -4,6 +4,9 @@ let totalCallsCount = 0;
 let responseBodiesEnabled = false;
 let dataVersion = 0; // bump on CLEAR_DATA to invalidate in-flight updates
 
+// Track which tabId each connected port is inspecting
+const portTabMap = new Map(); // port -> tabId
+
 // Import config and security analyzer
 self.importScripts('config.js');
 self.importScripts('security-analyzer.js');
@@ -57,24 +60,76 @@ chrome.runtime.onConnect.addListener((port) => {
   if (port.name === "devtools-panel") {
     port.onMessage.addListener(async (msg) => {
       try {
+        // Register the tab this panel is inspecting
+        if (msg.type === "REGISTER_TAB") {
+          portTabMap.set(port, msg.tabId);
+          console.log('Panel registered for tab:', msg.tabId);
+          return;
+        }
+        
+        // Get the tabId this panel is monitoring
+        const panelTabId = portTabMap.get(port);
+        
         if (msg.type === "GET_API_CALLS") {
-          const data = Array.from(apiCalls.entries()).map(([key, value]) => ({
-            endpoint: key,
-            method: value.method,
-            url: value.url,
-            host: value.host,
-            pathname: value.pathname,
-            calls: value.calls,
-            queryParams: Array.from(value.queryParams), // Convert Set to Array for serialization
-            requestBodies: value.requestBodies,
-            requestHeaders: value.requestHeaders ? Array.from(value.requestHeaders) : [],
-            securityIssues: value.securityIssues || []
-          }));
+          // Filter API calls to only include those from the panel's tab
+          const data = Array.from(apiCalls.entries())
+            .map(([key, value]) => {
+              // Filter calls to only those from this tab
+              const filteredCalls = panelTabId 
+                ? value.calls.filter(call => call.tabId === panelTabId)
+                : value.calls;
+              
+              // Skip endpoints with no calls from this tab
+              if (filteredCalls.length === 0) return null;
+              
+              // Filter security issues to only those from this tab's calls
+              const tabRequestIds = new Set(filteredCalls.map(c => c.requestId));
+              const filteredSecurityIssues = (value.securityIssues || [])
+                .filter(issue => tabRequestIds.has(issue.requestId));
+              
+              return {
+                endpoint: key,
+                method: value.method,
+                url: value.url,
+                host: value.host,
+                pathname: value.pathname,
+                calls: filteredCalls,
+                queryParams: Array.from(value.queryParams),
+                requestBodies: value.requestBodies,
+                requestHeaders: value.requestHeaders ? Array.from(value.requestHeaders) : [],
+                securityIssues: filteredSecurityIssues
+              };
+            })
+            .filter(item => item !== null);
           port.postMessage({ type: "API_CALLS_DATA", version: dataVersion, data });
         } else if (msg.type === "CLEAR_DATA") {
-          console.log('CLEAR_DATA message received in background');
-          apiCalls.clear();
-          totalCallsCount = 0;
+          console.log('CLEAR_DATA message received in background for tab:', panelTabId);
+          
+          if (panelTabId) {
+            // Clear only data for this specific tab
+            for (const [endpoint, value] of apiCalls.entries()) {
+              // Remove calls from this tab
+              value.calls = value.calls.filter(call => call.tabId !== panelTabId);
+              
+              // Remove security issues for this tab's requests
+              if (value.securityIssues) {
+                const remainingRequestIds = new Set(value.calls.map(c => c.requestId));
+                value.securityIssues = value.securityIssues.filter(
+                  issue => remainingRequestIds.has(issue.requestId)
+                );
+              }
+              
+              // Remove endpoint if no calls remain
+              if (value.calls.length === 0) {
+                apiCalls.delete(endpoint);
+              }
+            }
+          } else {
+            // Fallback: clear all if no tab registered
+            apiCalls.clear();
+            totalCallsCount = 0;
+          }
+          
           dataVersion += 1;
           // Also clear pending maps and any cached state
           try { pendingRequests.clear(); } catch (_) {}
@@ -115,6 +170,12 @@ chrome.runtime.onConnect.addListener((port) => {
     
   // Send initial data
   port.postMessage({ type: "CONNECTION_READY", version: dataVersion });
+  
+  // Clean up when panel disconnects
+  port.onDisconnect.addListener(() => {
+    portTabMap.delete(port);
+    console.log('Panel disconnected, cleaned up port mapping');
+  });
   }
 });
 
