@@ -221,11 +221,19 @@ function getFilteredEndpoints() {
       if (tagsA !== tagsB) {
         return tagsA.localeCompare(tagsB);
       }
-      return a[0].localeCompare(b[0]);
+      // Within same tag group, sort by timestamp (oldest first)
+      const timeA = a[1].calls && a[1].calls.length > 0 ? a[1].calls[0].timestamp : 0;
+      const timeB = b[1].calls && b[1].calls.length > 0 ? b[1].calls[0].timestamp : 0;
+      return timeA - timeB;
     });
   }
   
-  return filtered.sort((a, b) => a[0].localeCompare(b[0]));
+  // Default sort: oldest to newest by first call timestamp
+  return filtered.sort((a, b) => {
+    const timeA = a[1].calls && a[1].calls.length > 0 ? a[1].calls[0].timestamp : 0;
+    const timeB = b[1].calls && b[1].calls.length > 0 ? b[1].calls[0].timestamp : 0;
+    return timeA - timeB;
+  });
 }
 
 // ---- Advanced Filter Helpers ----
@@ -1437,10 +1445,6 @@ function generateExcelReport() {
       'Description',
       'Location',
       'Technical Details',
-      'Request Headers',
-      'Request Body',
-      'Response Headers',
-      'Response Body',
       'User Notes'
     ];
     
@@ -1463,45 +1467,6 @@ function generateExcelReport() {
           }
         });
 
-        // Get the most recent call data for request/response details
-        const latestCall = data.calls && data.calls.length > 0 ? data.calls[data.calls.length - 1] : {};
-        
-        // Build request headers string (uncensored)
-        let requestHeadersStr = '';
-        if (latestCall.allHeaders) {
-          requestHeadersStr = Object.entries(latestCall.allHeaders)
-            .map(([name, value]) => `${name}: ${value}`)
-            .join('\n');
-        }
-        
-        // Build request body string (uncensored)
-        let requestBodyStr = '';
-        if (latestCall.requestBody) {
-          if (typeof latestCall.requestBody === 'object') {
-            requestBodyStr = JSON.stringify(latestCall.requestBody, null, 2);
-          } else {
-            requestBodyStr = String(latestCall.requestBody);
-          }
-        }
-        
-        // Build response headers string (uncensored)
-        let responseHeadersStr = '';
-        if (latestCall.responseHeaders) {
-          responseHeadersStr = Object.entries(latestCall.responseHeaders)
-            .map(([name, value]) => `${name}: ${value}`)
-            .join('\n');
-        }
-        
-        // Build response body string (uncensored)
-        let responseBodyStr = '';
-        if (latestCall.responseBody) {
-          if (typeof latestCall.responseBody === 'object') {
-            responseBodyStr = JSON.stringify(latestCall.responseBody, null, 2);
-          } else {
-            responseBodyStr = String(latestCall.responseBody);
-          }
-        }
-
         uniqueIssues.forEach(issue => {
           issueCount++;
           
@@ -1511,13 +1476,20 @@ function generateExcelReport() {
             // Create a copy and remove findingStatus
             const detailsCopy = { ...issue.details };
             delete detailsCopy.findingStatus;
-            detailsStr = JSON.stringify(detailsCopy).replace(/"/g, '""'); // Escape quotes
+            detailsStr = JSON.stringify(detailsCopy);
           }
           
-          // Escape function for CSV values
+          // Escape function for CSV values - handles quotes, newlines, and special chars
           const escapeCSV = (str) => {
             if (!str) return '';
-            return str.replace(/"/g, '""');
+            // Replace newlines with " | " to prevent row breaks
+            // Replace carriage returns as well
+            // Then escape double quotes by doubling them
+            return str
+              .replace(/\r\n/g, ' | ')
+              .replace(/\n/g, ' | ')
+              .replace(/\r/g, ' | ')
+              .replace(/"/g, '""');
           };
           
           const row = [
@@ -1528,11 +1500,7 @@ function generateExcelReport() {
             `"${escapeCSV(issue.name || '')}"`,
             `"${escapeCSV(issue.message || '')}"`,
             `"${escapeCSV(issue.location || '')}"`,
-            `"${detailsStr}"`,
-            `"${escapeCSV(requestHeadersStr)}"`,
-            `"${escapeCSV(requestBodyStr)}"`,
-            `"${escapeCSV(responseHeadersStr)}"`,
-            `"${escapeCSV(responseBodyStr)}"`,
+            `"${escapeCSV(detailsStr)}"`,
             `"${escapeCSV(userNotes)}"`
           ];
           
