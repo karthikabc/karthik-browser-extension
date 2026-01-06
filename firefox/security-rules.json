@@ -273,10 +273,37 @@
     },
     "insecure-cookies": {
       "enabled": true,
-      "severity": "high",
-      "name": "Insecure Cookies",
-      "description": "Detects Set-Cookie attributes missing security flags",
-      "message": "Cookies should set Secure, HttpOnly and SameSite attributes"
+      "severity": "medium",
+      "name": "Insecure Cookie Attributes",
+      "description": "Detects Set-Cookie headers missing recommended security flags",
+      "message": "Cookie missing recommended security attributes",
+      "checks": {
+        "sameSiteNoneWithoutSecure": {
+          "severity": "high",
+          "message": "SameSite=None requires Secure flag - cookie will be rejected by browsers"
+        },
+        "securePrefixViolation": {
+          "severity": "high",
+          "message": "__Secure- prefixed cookie must have Secure flag"
+        },
+        "hostPrefixViolation": {
+          "severity": "high",
+          "message": "__Host- prefixed cookie must have Secure flag, no Domain, and Path=/"
+        },
+        "missingSecureOnAuth": {
+          "severity": "high",
+          "message": "Authentication/session cookie missing Secure flag"
+        },
+        "missingHttpOnlyOnAuth": {
+          "severity": "medium",
+          "message": "Authentication/session cookie missing HttpOnly flag"
+        },
+        "missingSameSite": {
+          "severity": "low",
+          "message": "Cookie missing SameSite attribute (defaults to Lax in modern browsers)"
+        }
+      },
+      "authCookiePatterns": ["session", "sess", "sid", "auth", "token", "jwt", "access", "refresh", "login", "credential", "jsessionid", "phpsessid", "asp.net_sessionid", "connect.sid"]
     },
     "pii-in-response-body": {
       "enabled": true,

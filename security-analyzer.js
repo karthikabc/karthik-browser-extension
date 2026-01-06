@@ -961,29 +961,130 @@ class SecurityAnalyzer {
 
   /**
    * Check for insecure cookie attributes in response
+   * Enhanced to reduce false positives by focusing on:
+   * 1. Critical issues (SameSite=None without Secure, prefix violations)
+   * 2. Authentication/session cookies (based on common naming patterns)
    */
   checkInsecureCookies(context) {
     const issues = [];
     const rule = this.rules['insecure-cookies'];
+    if (!rule) return issues;
+    
     const responseHeaders = (context.callDetails && context.callDetails.responseHeaders) || {};
     const setCookieHeader = responseHeaders['Set-Cookie'] || responseHeaders['set-cookie'];
     if (!setCookieHeader) return issues;
 
+    // Auth cookie patterns to identify sensitive cookies
+    const authPatterns = rule.authCookiePatterns || 
+      ['session', 'sess', 'sid', 'auth', 'token', 'jwt', 'access', 'refresh', 'login', 'credential', 'jsessionid', 'phpsessid', 'asp.net_sessionid', 'connect.sid'];
+    const authRegex = new RegExp(`^(${authPatterns.join('|')})`, 'i');
+
     const cookies = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader];
+    
     cookies.forEach((cookie) => {
+      const cookieName = cookie.split('=')[0].trim();
+      const cookiePreview = cookie.split(';')[0];
+      
+      // Parse cookie attributes
       const hasSecure = /;\s*Secure/i.test(cookie);
       const hasHttpOnly = /;\s*HttpOnly/i.test(cookie);
-      const hasSameSite = /;\s*SameSite=(Strict|Lax|None)/i.test(cookie);
-      if (!hasSecure || !hasHttpOnly || !hasSameSite) {
+      const sameSiteMatch = cookie.match(/;\s*SameSite=(Strict|Lax|None)/i);
+      const hasSameSite = !!sameSiteMatch;
+      const sameSiteValue = sameSiteMatch ? sameSiteMatch[1].toLowerCase() : null;
+      const hasDomain = /;\s*Domain=/i.test(cookie);
+      const pathMatch = cookie.match(/;\s*Path=([^;]*)/i);
+      const pathValue = pathMatch ? pathMatch[1].trim() : null;
+      
+      // Check if this looks like an auth/session cookie
+      const isAuthCookie = authRegex.test(cookieName);
+      
+      // CRITICAL: SameSite=None without Secure (browsers will reject this)
+      if (sameSiteValue === 'none' && !hasSecure) {
         issues.push({
-          message: rule.message,
+          message: rule.checks?.sameSiteNoneWithoutSecure?.message || 'SameSite=None requires Secure flag',
+          severity: 'high',
           details: {
-            cookiePreview: cookie.split(';')[0],
-            missing: [!hasSecure && 'Secure', !hasHttpOnly && 'HttpOnly', !hasSameSite && 'SameSite'].filter(Boolean)
+            cookiePreview,
+            issue: 'SameSite=None without Secure flag',
+            impact: 'Cookie will be rejected by modern browsers',
+            fixType: 'Server-side',
+            remediation: 'Add Secure flag when using SameSite=None'
           },
           location: 'response-headers'
         });
       }
+      
+      // CRITICAL: __Secure- prefix violation
+      if (cookieName.startsWith('__Secure-') && !hasSecure) {
+        issues.push({
+          message: rule.checks?.securePrefixViolation?.message || '__Secure- cookie missing Secure flag',
+          severity: 'high',
+          details: {
+            cookiePreview,
+            issue: '__Secure- prefix requires Secure flag',
+            fixType: 'Server-side',
+            remediation: 'Add Secure flag or remove __Secure- prefix'
+          },
+          location: 'response-headers'
+        });
+      }
+      
+      // CRITICAL: __Host- prefix violation
+      if (cookieName.startsWith('__Host-')) {
+        const violations = [];
+        if (!hasSecure) violations.push('missing Secure flag');
+        if (hasDomain) violations.push('must not have Domain attribute');
+        if (pathValue !== '/') violations.push('Path must be "/"');
+        
+        if (violations.length > 0) {
+          issues.push({
+            message: rule.checks?.hostPrefixViolation?.message || '__Host- cookie prefix violation',
+            severity: 'high',
+            details: {
+              cookiePreview,
+              issue: '__Host- prefix requirements not met',
+              violations,
+              fixType: 'Server-side',
+              remediation: '__Host- cookies must have Secure, no Domain, and Path=/'
+            },
+            location: 'response-headers'
+          });
+        }
+      }
+      
+      // HIGH: Auth/session cookie without Secure flag
+      if (isAuthCookie && !hasSecure) {
+        issues.push({
+          message: rule.checks?.missingSecureOnAuth?.message || 'Session cookie missing Secure flag',
+          severity: 'high',
+          details: {
+            cookiePreview,
+            issue: 'Authentication cookie transmitted over insecure connection',
+            fixType: 'Server-side',
+            remediation: 'Add Secure flag to prevent transmission over HTTP'
+          },
+          location: 'response-headers'
+        });
+      }
+      
+      // MEDIUM: Auth/session cookie without HttpOnly flag
+      if (isAuthCookie && !hasHttpOnly) {
+        issues.push({
+          message: rule.checks?.missingHttpOnlyOnAuth?.message || 'Session cookie missing HttpOnly flag',
+          severity: 'medium',
+          details: {
+            cookiePreview,
+            issue: 'Authentication cookie accessible to JavaScript',
+            fixType: 'Server-side',
+            remediation: 'Add HttpOnly flag to prevent XSS cookie theft'
+          },
+          location: 'response-headers'
+        });
+      }
+      
+      // Note: We intentionally DO NOT flag:
+      // - Non-auth cookies missing Secure/HttpOnly (too many false positives)
+      // - Missing SameSite on non-auth cookies (defaults to Lax in modern browsers)
     });
 
     return issues;

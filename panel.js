@@ -1427,7 +1427,7 @@ if (excelReportBtn) {
  */
 function generateExcelReport() {
   try {
-    // Prepare CSV content
+    // Prepare CSV content with expanded columns for full request/response data
     const headers = [
       'Endpoint URL',
       'Method',
@@ -1437,6 +1437,10 @@ function generateExcelReport() {
       'Description',
       'Location',
       'Technical Details',
+      'Request Headers',
+      'Request Body',
+      'Response Headers',
+      'Response Body',
       'User Notes'
     ];
     
@@ -1459,25 +1463,77 @@ function generateExcelReport() {
           }
         });
 
+        // Get the most recent call data for request/response details
+        const latestCall = data.calls && data.calls.length > 0 ? data.calls[data.calls.length - 1] : {};
+        
+        // Build request headers string (uncensored)
+        let requestHeadersStr = '';
+        if (latestCall.allHeaders) {
+          requestHeadersStr = Object.entries(latestCall.allHeaders)
+            .map(([name, value]) => `${name}: ${value}`)
+            .join('\n');
+        }
+        
+        // Build request body string (uncensored)
+        let requestBodyStr = '';
+        if (latestCall.requestBody) {
+          if (typeof latestCall.requestBody === 'object') {
+            requestBodyStr = JSON.stringify(latestCall.requestBody, null, 2);
+          } else {
+            requestBodyStr = String(latestCall.requestBody);
+          }
+        }
+        
+        // Build response headers string (uncensored)
+        let responseHeadersStr = '';
+        if (latestCall.responseHeaders) {
+          responseHeadersStr = Object.entries(latestCall.responseHeaders)
+            .map(([name, value]) => `${name}: ${value}`)
+            .join('\n');
+        }
+        
+        // Build response body string (uncensored)
+        let responseBodyStr = '';
+        if (latestCall.responseBody) {
+          if (typeof latestCall.responseBody === 'object') {
+            responseBodyStr = JSON.stringify(latestCall.responseBody, null, 2);
+          } else {
+            responseBodyStr = String(latestCall.responseBody);
+          }
+        }
+
         uniqueIssues.forEach(issue => {
           issueCount++;
           
-          // Format details as a single string
+          // Format details as a single string, excluding findingStatus
           let detailsStr = '';
           if (issue.details) {
-            detailsStr = JSON.stringify(issue.details).replace(/"/g, '""'); // Escape quotes
+            // Create a copy and remove findingStatus
+            const detailsCopy = { ...issue.details };
+            delete detailsCopy.findingStatus;
+            detailsStr = JSON.stringify(detailsCopy).replace(/"/g, '""'); // Escape quotes
           }
           
+          // Escape function for CSV values
+          const escapeCSV = (str) => {
+            if (!str) return '';
+            return str.replace(/"/g, '""');
+          };
+          
           const row = [
-            `"${(data.url || endpoint).replace(/"/g, '""')}"`,
-            `"${(data.method || '').replace(/"/g, '""')}"`,
-            `"${(data.host || '').replace(/"/g, '""')}"`,
+            `"${escapeCSV(data.url || endpoint)}"`,
+            `"${escapeCSV(data.method || '')}"`,
+            `"${escapeCSV(data.host || '')}"`,
             `"${(issue.severity || '').toUpperCase()}"`,
-            `"${(issue.name || '').replace(/"/g, '""')}"`,
-            `"${(issue.message || '').replace(/"/g, '""')}"`,
-            `"${(issue.location || '').replace(/"/g, '""')}"`,
+            `"${escapeCSV(issue.name || '')}"`,
+            `"${escapeCSV(issue.message || '')}"`,
+            `"${escapeCSV(issue.location || '')}"`,
             `"${detailsStr}"`,
-            `"${userNotes.replace(/"/g, '""')}"`
+            `"${escapeCSV(requestHeadersStr)}"`,
+            `"${escapeCSV(requestBodyStr)}"`,
+            `"${escapeCSV(responseHeadersStr)}"`,
+            `"${escapeCSV(responseBodyStr)}"`,
+            `"${escapeCSV(userNotes)}"`
           ];
           
           csvContent += row.join(',') + '\n';
@@ -2767,12 +2823,22 @@ function generateAiPrompt(issue, endpointData, endpointKey) {
 function formatSecurityIssuesForCopy(issues) {
   if (!issues || issues.length === 0) return 'No security issues detected.';
   
-  return issues.map(issue => {
+  // Deduplicate issues by ruleId and location
+  const uniqueIssuesMap = new Map();
+  issues.forEach(issue => {
+    const key = `${issue.ruleId}-${issue.location}`;
+    if (!uniqueIssuesMap.has(key)) {
+      uniqueIssuesMap.set(key, issue);
+    }
+  });
+  
+  return Array.from(uniqueIssuesMap.values()).map(issue => {
     let detailsStr = 'N/A';
     if (issue.details) {
       if (typeof issue.details === 'object') {
-        // Format object details nicely
-        const entries = Object.entries(issue.details);
+        // Format object details nicely, excluding findingStatus
+        const entries = Object.entries(issue.details)
+          .filter(([key]) => key !== 'findingStatus');
         if (entries.length > 0) {
           detailsStr = entries
             .map(([key, value]) => `${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`)
