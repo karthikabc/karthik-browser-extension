@@ -299,20 +299,71 @@ browser.webRequest.onCompleted.addListener(
           call.status = details.statusCode;
           call.statusLine = details.statusLine;
           
-          // Store response headers
+          // Store response headers (normalize names to lowercase for HTTP/2 and HTTP/3 compatibility)
           if (details.responseHeaders) {
             call.responseHeaders = {};
             details.responseHeaders.forEach(header => {
-              call.responseHeaders[header.name] = header.value;
+              // Normalize header name to lowercase to handle HTTP/2 and HTTP/3
+              // where headers are natively lowercase
+              call.responseHeaders[header.name.toLowerCase()] = header.value;
             });
           }
+
+          // Mark this as final response for security analysis
+          const isRedirect = details.statusCode >= 300 && details.statusCode < 400;
+          call.isFinalResponse = !isRedirect;
+          call.isHttps = url.protocol === 'https:';
 
           // Perform response-based security analysis now that we have headers (and possibly body)
           const vulnerabilities = securityAnalyzer.analyzeCall(call);
           if (vulnerabilities && vulnerabilities.length > 0) {
-            call.securityIssues = [...(call.securityIssues || []), ...vulnerabilities];
-            if (!apiCall.securityIssues) apiCall.securityIssues = [];
-            apiCall.securityIssues.push(...vulnerabilities);
+            // For final responses, suppress any earlier provisional HSTS findings
+            if (call.isFinalResponse && call.isHttps) {
+              // Check if HSTS header is present in the final response
+              // (headers are now stored with lowercase names for HTTP/2 and HTTP/3 compatibility)
+              const hstsHeaderValue = (call.responseHeaders || {})['strict-transport-security'];
+              
+              if (hstsHeaderValue) {
+                // HSTS is PRESENT - remove any earlier HSTS findings for this call
+                if (call.securityIssues) {
+                  call.securityIssues = call.securityIssues.filter(
+                    issue => !issue.message?.toLowerCase().includes('strict-transport-security')
+                  );
+                }
+                if (apiCall.securityIssues) {
+                  apiCall.securityIssues = apiCall.securityIssues.filter(
+                    issue => !(issue.requestId === call.requestId && 
+                              issue.message?.toLowerCase().includes('strict-transport-security'))
+                  );
+                }
+                // Filter out HSTS findings from new vulnerabilities since header is present
+                const filteredVulns = vulnerabilities.filter(
+                  v => !v.message?.toLowerCase().includes('strict-transport-security')
+                );
+                if (filteredVulns.length > 0) {
+                  call.securityIssues = [...(call.securityIssues || []), ...filteredVulns];
+                  if (!apiCall.securityIssues) apiCall.securityIssues = [];
+                  apiCall.securityIssues.push(...filteredVulns);
+                }
+              } else {
+                // HSTS is missing - add findings normally
+                call.securityIssues = [...(call.securityIssues || []), ...vulnerabilities];
+                if (!apiCall.securityIssues) apiCall.securityIssues = [];
+                apiCall.securityIssues.push(...vulnerabilities);
+              }
+            } else {
+              // Non-final or non-HTTPS response - add findings normally (non-HSTS ones)
+              // Filter out HSTS findings for non-final responses to prevent false positives
+              const filteredVulns = isRedirect ? vulnerabilities.filter(
+                v => !v.message?.toLowerCase().includes('strict-transport-security')
+              ) : vulnerabilities;
+              
+              if (filteredVulns.length > 0) {
+                call.securityIssues = [...(call.securityIssues || []), ...filteredVulns];
+                if (!apiCall.securityIssues) apiCall.securityIssues = [];
+                apiCall.securityIssues.push(...filteredVulns);
+              }
+            }
           }
         }
       }

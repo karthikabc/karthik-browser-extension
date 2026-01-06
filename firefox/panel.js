@@ -505,7 +505,7 @@ function showEndpointDetails(endpoint) {
   requestDetails.appendChild(generalSection);
   
   // Security Issues section - show first for visibility
-  const securitySection = createSecurityIssuesSection(data);
+  const securitySection = createSecurityIssuesSection(data, endpoint);
   requestDetails.appendChild(securitySection);
   
   // User Notes section
@@ -2487,16 +2487,22 @@ function updateSecuritySummary() {
 function generateCombinedAiPrompt() {
   let prompt = `I have analyzed the following API endpoints and found security vulnerabilities. Please summarize these issues, explain the risks, and suggest fixes.\n\n`;
   
-  prompt += `| Endpoint | Method | Severity | Vulnerability | Description |\n`;
-  prompt += `|---|---|---|---|---|\n`;
+  prompt += `| Endpoint | Method | Severity | Vulnerability | Description | User Notes |\n`;
+  prompt += `|---|---|---|---|---|---|\n`;
   
   let hasIssues = false;
+  const endpointsWithIssues = [];
   
   selectedEndpoints.forEach(endpoint => {
     const data = apiData.get(endpoint);
     if (data && data.securityIssues && data.securityIssues.length > 0) {
       hasIssues = true;
+      endpointsWithIssues.push({ endpoint, data });
       
+      // Get user notes (tags) for this endpoint
+      const tags = endpointTags.get(endpoint);
+      const userNotes = tags ? Array.from(tags).join('; ') : '';
+
       // Deduplicate issues
       const uniqueIssues = new Map();
       data.securityIssues.forEach(issue => {
@@ -2513,7 +2519,7 @@ function generateCombinedAiPrompt() {
         const name = issue.name || 'Unknown Issue';
         const message = (issue.message || '').replace(/\n/g, ' '); // Remove newlines for table
         
-        prompt += `| ${url} | ${method} | ${severity} | ${name} | ${message} |\n`;
+        prompt += `| ${url} | ${method} | ${severity} | ${name} | ${message} | ${userNotes} |\n`;
       });
     }
   });
@@ -2522,7 +2528,58 @@ function generateCombinedAiPrompt() {
     return "No security issues found in the selected endpoints.";
   }
   
-  prompt += `\n\nPlease provide a detailed summary of these vulnerabilities, grouped by type and severity. Also provide remediation steps for each type of vulnerability found.`;
+  prompt += `\n\nPlease provide a detailed summary of these vulnerabilities, grouped by type and severity. Also provide remediation steps for each type of vulnerability found. Highlight if the fix needs to happen in the server side or client side.\n\n`;
+
+  prompt += `Below are the detailed request and response information for the affected endpoints:\n\n`;
+
+  endpointsWithIssues.forEach(({ endpoint, data }) => {
+      prompt += `### Endpoint: ${data.url || endpoint}\n`;
+      prompt += `Method: ${data.method || 'N/A'}\n`;
+      
+      if (data.queryParams && Object.keys(data.queryParams).length > 0) {
+         const qp = data.queryParams instanceof Set ? Array.from(data.queryParams) : data.queryParams;
+         prompt += `Query Parameters: ${JSON.stringify(qp, null, 2)}\n`;
+      }
+
+      // Use the latest call for details
+      let call = null;
+      if (data.calls && data.calls.length > 0) {
+        call = data.calls[data.calls.length - 1];
+      }
+
+      if (call) {
+        if (call.allHeaders || call.requestHeaders) {
+            prompt += `Request Headers: ${JSON.stringify(call.allHeaders || call.requestHeaders, null, 2)}\n`;
+        }
+        
+        if (call.requestBody) {
+            prompt += `Request Body: ${JSON.stringify(call.requestBody, null, 2)}\n`;
+        }
+
+        if (call.responseHeaders) {
+            prompt += `Response Headers: ${JSON.stringify(call.responseHeaders, null, 2)}\n`;
+        }
+
+        if (call.responseBody) {
+            const body = typeof call.responseBody === 'string' ? call.responseBody : JSON.stringify(call.responseBody, null, 2);
+            prompt += `Response Body: ${body}\n`;
+        }
+      } else {
+          // Fallback
+          if (data.requestHeaders) {
+            const rh = data.requestHeaders instanceof Set ? Array.from(data.requestHeaders) : data.requestHeaders;
+            prompt += `Request Headers (Names only): ${JSON.stringify(rh, null, 2)}\n`;
+          }
+          
+          if (data.requestBodies && data.requestBodies.length > 0) {
+            prompt += `Request Bodies:\n`;
+            data.requestBodies.forEach((body, index) => {
+               prompt += `Body ${index + 1}: ${JSON.stringify(body, null, 2)}\n`;
+            });
+          }
+      }
+      prompt += `\n---\n\n`;
+  });
   
   return prompt;
 }
@@ -2563,7 +2620,7 @@ function generateCurlCommand(call) {
   return curl;
 }
 
-function generateAiPrompt(issue, endpointData) {
+function generateAiPrompt(issue, endpointData, endpointKey) {
   let prompt = `I found a security vulnerability in my application. Here are the details:\n\n`;
   prompt += `Name: ${issue.name}\n`;
   prompt += `Severity: ${issue.severity}\n`;
@@ -2571,6 +2628,15 @@ function generateAiPrompt(issue, endpointData) {
   
   if (issue.location) {
     prompt += `Location: ${issue.location}\n`;
+  }
+
+  // Use endpointKey if provided, otherwise try to use url from data
+  const key = endpointKey || (endpointData ? endpointData.url : null);
+  if (key) {
+    const tags = endpointTags.get(key);
+    if (tags && tags.size > 0) {
+      prompt += `User Notes: ${Array.from(tags).join('; ')}\n`;
+    }
   }
   
   if (issue.details) {
@@ -2585,24 +2651,59 @@ function generateAiPrompt(issue, endpointData) {
   }
 
   if (endpointData) {
+    // Find the specific call that triggered this issue, or default to the latest one
+    let call = null;
+    if (issue.requestId && endpointData.calls) {
+      call = endpointData.calls.find(c => c.requestId === issue.requestId);
+    }
+    if (!call && endpointData.calls && endpointData.calls.length > 0) {
+      call = endpointData.calls[endpointData.calls.length - 1];
+    }
+
     prompt += `\nAPI Request Details:\n`;
     prompt += `URL: ${endpointData.url || 'N/A'}\n`;
     prompt += `Method: ${endpointData.method || 'N/A'}\n`;
     
-    if (endpointData.requestHeaders) {
-      prompt += `Request Headers: ${JSON.stringify(endpointData.requestHeaders, null, 2)}\n`;
-    }
-    
-    if (endpointData.requestBodies && endpointData.requestBodies.length > 0) {
-      prompt += `Request Body: ${JSON.stringify(endpointData.requestBodies[0], null, 2)}\n`;
+    if (endpointData.queryParams && Object.keys(endpointData.queryParams).length > 0) {
+       // Handle Set if it wasn't converted (though it should be handled in API_CALL_DETECTED)
+       const qp = endpointData.queryParams instanceof Set ? Array.from(endpointData.queryParams) : endpointData.queryParams;
+       prompt += `Query Parameters: ${JSON.stringify(qp, null, 2)}\n`;
     }
 
-    if (endpointData.responseHeaders) {
-      prompt += `Response Headers: ${JSON.stringify(endpointData.responseHeaders, null, 2)}\n`;
+    if (call) {
+        if (call.allHeaders || call.requestHeaders) {
+            prompt += `Request Headers: ${JSON.stringify(call.allHeaders || call.requestHeaders, null, 2)}\n`;
+        }
+        
+        if (call.requestBody) {
+            prompt += `Request Body: ${JSON.stringify(call.requestBody, null, 2)}\n`;
+        }
+
+        if (call.responseHeaders) {
+            prompt += `Response Headers: ${JSON.stringify(call.responseHeaders, null, 2)}\n`;
+        }
+
+        if (call.responseBody) {
+            const body = typeof call.responseBody === 'string' ? call.responseBody : JSON.stringify(call.responseBody, null, 2);
+            prompt += `Response Body: ${body}\n`;
+        }
+    } else {
+        // Fallback to aggregated data if no call found (legacy support)
+        if (endpointData.requestHeaders) {
+             const rh = endpointData.requestHeaders instanceof Set ? Array.from(endpointData.requestHeaders) : endpointData.requestHeaders;
+             prompt += `Request Headers (Names only): ${JSON.stringify(rh, null, 2)}\n`;
+        }
+        
+        if (endpointData.requestBodies && endpointData.requestBodies.length > 0) {
+          prompt += `Request Bodies:\n`;
+          endpointData.requestBodies.forEach((body, index) => {
+             prompt += `Body ${index + 1}: ${JSON.stringify(body, null, 2)}\n`;
+          });
+        }
     }
   }
   
-  prompt += `\nPlease explain this vulnerability in detail, why it is a risk, and how to fix it. Provide code examples if possible.`;
+  prompt += `\nPlease explain this vulnerability in detail, why it is a risk, and how to fix it. Provide code examples if possible. Highlight if the fix needs to happen in the server side or client side.`;
   return prompt;
 }
 
@@ -2635,7 +2736,7 @@ function formatSecurityIssuesForCopy(issues) {
 /**
  * Create security issues display section
  */
-function createSecurityIssuesSection(data) {
+function createSecurityIssuesSection(data, endpointKey) {
   const section = createElement('div', 'detail-section security-section');
   
   // Header row with copy button
@@ -2749,7 +2850,7 @@ function createSecurityIssuesSection(data) {
           e.preventDefault();
           e.stopPropagation();
           
-          const prompt = generateAiPrompt(issue, data);
+          const prompt = generateAiPrompt(issue, data, endpointKey);
           navigator.clipboard.writeText(prompt).then(() => {
             // Save original state
             const originalHTML = '<span class="ai-icon">✨</span> ASK AI';

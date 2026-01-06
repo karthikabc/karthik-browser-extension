@@ -166,7 +166,9 @@ class SecurityAnalyzer {
           details: {
             type: patternName,
             matchCount: matches.length,
-            example: matches[0].substring(0, 20) + '...'
+            example: matches[0].substring(0, 20) + '...',
+            fixType: 'Server-side/Client-side',
+            remediation: 'Do not pass sensitive data in URL parameters. Use POST body instead.'
           },
           location: 'url'
         });
@@ -192,7 +194,9 @@ class SecurityAnalyzer {
           message: `Sensitive data in header: ${headerName}`,
           details: {
             header: headerName,
-            reason: 'PII should not be transmitted in headers'
+            reason: 'PII should not be transmitted in headers',
+            fixType: 'Server-side/Client-side',
+            remediation: 'Do not use custom headers to transmit sensitive information.'
           },
           location: 'headers'
         });
@@ -218,7 +222,12 @@ class SecurityAnalyzer {
         if (isHttp && authHeader && new RegExp(check.pattern).test(authHeader)) {
           issues.push({
             message: check.message,
-            details: { type: 'basic_auth_over_http', protocol: 'HTTP' },
+            details: { 
+                type: 'basic_auth_over_http', 
+                protocol: 'HTTP',
+                fixType: 'Server-side',
+                remediation: 'Use HTTPS for Basic Authentication.'
+            },
             location: 'headers'
           });
         }
@@ -231,7 +240,11 @@ class SecurityAnalyzer {
         if (foundParams.length > 0) {
           issues.push({
             message: check.message,
-            details: { params: foundParams },
+            details: { 
+                params: foundParams,
+                fixType: 'Server-side/Client-side',
+                remediation: 'Do not pass API keys in query parameters. Use Authorization header instead.'
+            },
             location: 'query'
           });
         }
@@ -251,7 +264,11 @@ class SecurityAnalyzer {
     if (context.url.startsWith('http://')) {
       issues.push({
         message: rule.message,
-        details: { protocol: 'http' },
+        details: { 
+            protocol: 'http',
+            fixType: 'Server-side',
+            remediation: 'Enable HTTPS and redirect HTTP traffic to HTTPS.'
+        },
         location: 'protocol'
       });
     }
@@ -260,25 +277,204 @@ class SecurityAnalyzer {
   }
 
   /**
-   * Check for missing security headers
+   * Check for missing security headers with enhanced HSTS and scope awareness
    */
   checkMissingResponseSecurityHeaders(context) {
     const issues = [];
     const rule = this.rules['missing-response-security-headers'];
-    const responseHeaders = (context.callDetails && context.callDetails.responseHeaders) || {};
-    const headerNames = Object.keys(responseHeaders).map(h => h.toLowerCase());
+    if (!rule || !rule.headers) return [];
 
-    const missingHeaders = rule.headers.filter(h => 
-      !headerNames.includes(h.toLowerCase())
-    );
+    const call = context.callDetails || {};
+    const responseHeaders = call.responseHeaders || {};
+    // Normalize header names to lowercase for case-insensitive lookup
+    const headersMap = new Map();
+    Object.keys(responseHeaders).forEach(h => headersMap.set(h.toLowerCase(), responseHeaders[h]));
 
-    if (missingHeaders.length > 0) {
-      issues.push({
-        message: `Missing recommended security headers: ${missingHeaders.join(', ')}`,
-        details: { missingHeaders },
-        location: 'response-headers'
-      });
-    }
+    const url = context.url || '';
+    const isHttps = url.toLowerCase().startsWith('https://');
+    const status = call.status || 0;
+    const isRedirect = status >= 300 && status < 400;
+    const method = (context.method || '').toUpperCase();
+    const isOptions = method === 'OPTIONS';
+
+    // Enhanced logic definitions
+    const headerLogic = {
+      'strict-transport-security': {
+        check: (value) => {
+            // HSTS Requirements:
+            // 1. HTTPS-only rule: Only require HSTS when the final request URL scheme is HTTPS.
+            if (!isHttps) return { status: 'not-applicable', reason: 'Non-HTTPS scheme' };
+            
+            // 2. Final-response evaluation: Do not evaluate on Redirects (3xx)
+            if (isRedirect) return { status: 'not-applicable', reason: 'Redirect response' };
+            
+            // 3. Final-response evaluation: Do not evaluate on OPTIONS
+            if (isOptions) return { status: 'not-applicable', reason: 'OPTIONS method' };
+            
+            // 4. Header presence logic: If missing on final HTTPS response
+            if (!value) return { status: 'missing' };
+            
+            // 5. Normalize the header value for robust parsing:
+            //    - Trim leading/trailing whitespace
+            //    - Normalize whitespace around semicolons and equals signs
+            //    This handles HTTP/2 and HTTP/3 header variations
+            const normalizedValue = value
+              .trim()
+              .replace(/\s*;\s*/g, ';')  // Remove whitespace around semicolons
+              .replace(/\s*=\s*/g, '='); // Remove whitespace around equals signs
+            
+            // 6. Compliance thresholds - use case-insensitive matching
+            //    Match max-age directive with optional whitespace already normalized
+            const maxAgeMatch = normalizedValue.match(/max-age=(\d+)/i);
+            
+            // Validate that max-age directive exists and has a valid numeric value
+            if (!maxAgeMatch) {
+              return {
+                status: 'weak',
+                message: 'HSTS header present but missing valid max-age directive',
+                details: { rawValue: value, normalizedValue }
+              };
+            }
+            
+            const maxAge = parseInt(maxAgeMatch[1], 10);
+            const includeSubDomains = /includeSubDomains/i.test(normalizedValue);
+            const preload = /preload/i.test(normalizedValue);
+
+            // Treat as compliant if max-age >= 31536000 (1 year)
+            if (maxAge < 31536000) {
+                return { 
+                    status: 'weak', 
+                    message: 'HSTS max-age is less than 1 year (31536000 seconds)',
+                    details: { maxAge, includeSubDomains, preload }
+                };
+            }
+            
+            // 6. Reporting classification: PRESENT (Compliant)
+            return { status: 'compliant', details: { maxAge, includeSubDomains, preload } };
+        },
+        description: 'Enforces secure (HTTP over SSL/TLS) connections to the server.',
+        remediation: 'Configure on Server-side (Web Server, Load Balancer, or CDN). Ensure max-age >= 31536000.'
+      },
+      'content-security-policy': {
+        check: (value) => !value ? { status: 'missing' } : { status: 'compliant' },
+        description: 'Prevents cross-site scripting (XSS), clickjacking and other code injection attacks.',
+        remediation: 'Configure on Server-side. Define allowed sources for content.'
+      },
+      'x-frame-options': {
+        check: (value) => !value ? { status: 'missing' } : { status: 'compliant' },
+        description: 'Protects against Clickjacking attacks.',
+        remediation: 'Configure on Server-side.'
+      },
+      'x-content-type-options': {
+        check: (value) => !value ? { status: 'missing' } : { status: 'compliant' },
+        description: 'Prevents MIME type sniffing.',
+        remediation: 'Configure on Server-side.'
+      },
+      'referrer-policy': {
+        check: (value) => !value ? { status: 'missing' } : { status: 'compliant' },
+        description: 'Controls how much referrer information is included with requests.',
+        remediation: 'Configure on Server-side.'
+      },
+      'permissions-policy': {
+        check: (value) => !value ? { status: 'missing' } : { status: 'compliant' },
+        description: 'Allows a site to allow or block the use of browser features.',
+        remediation: 'Configure on Server-side.'
+      }
+    };
+
+    rule.headers.forEach(headerName => {
+        const lowerName = headerName.toLowerCase();
+        const headerValue = headersMap.get(lowerName);
+        const logic = headerLogic[lowerName];
+
+        if (logic) {
+            const result = logic.check(headerValue);
+            
+            // For HSTS specifically, handle all classification states
+            if (lowerName === 'strict-transport-security') {
+                if (result.status === 'not-applicable') {
+                    // Do NOT create a finding for non-applicable cases
+                    // (HTTP, redirects, OPTIONS) - this prevents false positives
+                    return;
+                } else if (result.status === 'compliant') {
+                    // PRESENT - Header exists with valid max-age. No finding needed.
+                    return;
+                } else if (result.status === 'weak') {
+                    // WEAK CONFIGURATION - Header present but max-age below threshold
+                    issues.push({
+                        message: `Weak configuration for ${headerName}: ${result.message}`,
+                        details: {
+                            header: headerName,
+                            currentValue: headerValue,
+                            classification: 'WEAK CONFIGURATION',
+                            ...result.details,
+                            remediation: logic.remediation,
+                            fixType: 'Server-side',
+                            findingStatus: 'Informational',
+                            evaluationContext: 'Final HTTPS response evaluated'
+                        },
+                        location: 'response-headers'
+                    });
+                } else if (result.status === 'missing') {
+                    // MISSING - Only if final HTTPS response lacks the header
+                    issues.push({
+                        message: `Missing security header: ${headerName}`,
+                        details: {
+                            header: headerName,
+                            classification: 'MISSING',
+                            description: logic.description,
+                            remediation: logic.remediation,
+                            fixType: 'Server-side',
+                            findingStatus: 'Confirmed Issue',
+                            evaluationContext: 'Final HTTPS response evaluated - header absent'
+                        },
+                        location: 'response-headers'
+                    });
+                }
+            } else {
+                // For other headers, use the original logic
+                if (result.status === 'missing') {
+                    issues.push({
+                        message: `Missing security header: ${headerName}`,
+                        details: {
+                            header: headerName,
+                            description: logic.description,
+                            remediation: logic.remediation,
+                            fixType: 'Server-side',
+                            findingStatus: 'Confirmed Issue'
+                        },
+                        location: 'response-headers'
+                    });
+                } else if (result.status === 'weak') {
+                    issues.push({
+                        message: `Weak configuration for ${headerName}: ${result.message}`,
+                        details: {
+                            header: headerName,
+                            currentValue: headerValue,
+                            ...result.details,
+                            remediation: logic.remediation,
+                            fixType: 'Server-side',
+                            findingStatus: 'Confirmed Issue'
+                        },
+                        location: 'response-headers'
+                    });
+                }
+            }
+        } else {
+            // Fallback for other headers in the list
+            if (!headerValue) {
+                issues.push({
+                    message: `Missing recommended security header: ${headerName}`,
+                    details: { 
+                        header: headerName, 
+                        fixType: 'Server-side',
+                        findingStatus: 'Confirmed Issue'
+                    },
+                    location: 'response-headers'
+                });
+            }
+        }
+    });
 
     return issues;
   }
@@ -301,7 +497,13 @@ class SecurityAnalyzer {
     if (acao === '*' && acac && acac.toLowerCase() === 'true') {
       issues.push({
         message: rule.checks[0].message,
-        details: { acao, acac, type: 'wildcard_with_credentials' },
+        details: { 
+            acao, 
+            acac, 
+            type: 'wildcard_with_credentials',
+            fixType: 'Server-side',
+            remediation: 'Configure CORS on the server to not allow wildcard origins with credentials.'
+        },
         location: 'response-headers'
       });
     }
@@ -310,7 +512,13 @@ class SecurityAnalyzer {
     if (acao === 'null' && acac && acac.toLowerCase() === 'true') {
       issues.push({
         message: rule.checks[1].message,
-        details: { acao, acac, type: 'null_origin' },
+        details: { 
+            acao, 
+            acac, 
+            type: 'null_origin',
+            fixType: 'Server-side',
+            remediation: 'Do not allow "null" origin in CORS configuration.'
+        },
         location: 'response-headers'
       });
     }
@@ -320,7 +528,14 @@ class SecurityAnalyzer {
       // Only flag if it looks like reflection (not a legitimate allowlist match)
       issues.push({
         message: rule.checks[2].message,
-        details: { acao, requestOrigin, acac, type: 'origin_reflection' },
+        details: { 
+            acao, 
+            requestOrigin, 
+            acac, 
+            type: 'origin_reflection',
+            fixType: 'Server-side',
+            remediation: 'Validate the Origin header against a strict allowlist on the server.'
+        },
         location: 'response-headers'
       });
     }
@@ -342,7 +557,11 @@ class SecurityAnalyzer {
       if (foundFields.length > 0) {
         issues.push({
           message: `PII detected in request body: ${foundFields.join(', ')}`,
-          details: { fields: foundFields },
+          details: { 
+              fields: foundFields,
+              fixType: 'Client-side',
+              remediation: 'Ensure PII is not sent in the request body unless absolutely necessary and encrypted.'
+          },
           location: 'body'
         });
       }
@@ -367,7 +586,11 @@ class SecurityAnalyzer {
       if (!hasLimit) {
         issues.push({
           message: rule.checks[0].message,
-          details: { recommendation: 'Implement pagination with limit/page parameters' },
+          details: { 
+              recommendation: 'Implement pagination with limit/page parameters',
+              fixType: 'Server-side',
+              remediation: 'Implement pagination for this endpoint to prevent excessive data exposure.'
+          },
           location: 'query'
         });
       }
@@ -739,7 +962,11 @@ class SecurityAnalyzer {
       if (re.test(body)) {
         issues.push({
           message: `Sensitive data detected in response: ${name}`,
-          details: { pattern: name },
+          details: { 
+              pattern: name,
+              fixType: 'Server-side',
+              remediation: 'Ensure PII is not exposed in the response body unless absolutely necessary and encrypted.'
+          },
           location: 'response-body'
         });
       }
